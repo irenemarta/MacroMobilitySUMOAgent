@@ -1,0 +1,14 @@
+{
+  "LLAMA_CPP_DIR": "/percorso/scelto/llama.cpp",
+  "LLAMA_MODEL": "/percorso/scelto/modelli/modello.gguf",
+  "LLAMA_SERVER": null,
+  "LLAMA_HOST": "127.0.0.1",
+  "LLAMA_PORT": 8080,
+  "LLAMA_SERVER_ARGS": ["--jinja"],
+  "LLM_BASE_URL": null,
+  "RETE": "base.net.xml",
+  "VIAGGI": "viaggi.trips.xml",
+  "INDICE": "indice.sqlite",
+  "CARTELLA_SCENARI": "scenari",
+  "CARTELLA_SIM": "sim"
+}
