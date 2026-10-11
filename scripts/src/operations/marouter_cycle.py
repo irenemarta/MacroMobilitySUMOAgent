@@ -38,14 +38,20 @@ SUE_PARAMS = dict(
     weight_adaption=0.4,
 )
 
+WEIGHT_ADAPTION = 0.4
+
 INCREMENTAL_PARAMS = dict(
     method="incremental",
-    route_choice="gawron",
-    paths=5,
+    route_choice="logit",
+    logit_theta=0.3,
+    logit_beta=0.2,
+    paths=10,
     path_penalty=15.0,
     weights_priority=0.0,
+    max_alternatives=10,
     max_iterations=100,
-    weight_adaption=0.4,  # 0.8 no tls, 0.4 tls
+    # weight_adaption=0.8,  # 0.8 no tls, 0.4 tls
+    # tolerance=0.01,
 )
 
 EDGEDATA_FREQ = 1800 # frequency of data dump
@@ -84,7 +90,7 @@ def _write_edgedata_additional(
     return path
 
 # STEP 4.2 — Traffic Assignment with marouter for peaks (AM / PM)
-def run_cycle(
+def run_cycle_peaks(
     scenario: str,
     period: str,
     ctx: AssignmentContext,
@@ -275,7 +281,7 @@ def build_sumocfg_day(
 
 
 # STEP 4.2-DAY (iterative) over 24 hours
-def run_macro_assignment_day_iterative(
+def run_assignement_cycle_day_iterative(
     scenario: str,
     taz_file: Path,
     n_rounds: int = 3,
@@ -335,16 +341,6 @@ def run_macro_assignment_day_iterative(
             additional_files=[det_file, cfg.VTYPE],
             netload_output=netload_output,
             data_dir=cfg.OD_MATRICES["DAY"] / f"scaled_{scale}",
-            method="incremental",
-            route_choice="logit",
-            logit_theta=0.3,
-            logit_beta=0.2,
-            paths=10,
-            path_penalty=15.0,
-            weights_priority=0.0,
-            max_alternatives=10,
-            max_iterations=100,
-            tolerance=0.01,
             weights_tls=tls_penalty,
             begin=0,
             end=24 * 3600,
@@ -354,9 +350,10 @@ def run_macro_assignment_day_iterative(
                 "-l",
                 str(work_dir / f"marouter_r{round_idx}.log"),
                 "--weight-adaption",
-                str(INCREMENTAL_PARAMS["weight_adaption"]),
+                str(WEIGHT_ADAPTION),
                 "--seed", str(cfg.SEED),
             ],
+            **INCREMENTAL_PARAMS,
         )
         print(
             f"\tDay macroscopic assignment round {round_idx} saved here: {routes_macro}"

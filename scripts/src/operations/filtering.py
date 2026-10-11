@@ -1,4 +1,4 @@
-import copy
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from tqdm import tqdm
@@ -135,60 +135,51 @@ def filter_zero_prob(marouter_output: Path) -> Path:
 
 
 ### WHAT-IF demand scaling
-def _trip_factor(trip: ET.Element, demand_rules: list) -> float:
-    """Product of the factors of the demand rules for trips affected by the disturbance demand rule 
-    (departure time and TAZ).
-    Ex: +20% demand only from 8am to 9 am."""
+def _hour_factor(origin: str, destination: str, hour: int, demand_rules: list) -> float:
+    """Product of the factors of the demand rules OD pairs affected by the disturbance demand rule of the hour. 
+    Ex: +20% demand only from 8am to 9 am from TAZ x to TAZ y."""
     factor = 1.0
-    depart = float(trip.get("depart", 0)) # seconds from midnight
     for dr in demand_rules:
-        if not dr["begin"] <= depart < dr["end"]: # skip not affected hour
+        overlap = min(dr["end"], (hour + 1) * 3600) - max(dr["begin"], hour * 3600)
+        if overlap:
             continue
         if dr["taz"]:
             zones = set(dr["taz"])
             if dr["direction"] == "from":
-                affected_trip = trip.get("fromTaz") in zones
+                affected_trip = origin in zones
             elif dr["direction"] == "to":
-                affected_trip = trip.get("toTaz") in zones
+                affected_trip = destination in zones
             else:
-                affected_trip = trip.get("fromTaz") in zones or trip.get("toTaz") in zones
+                affected_trip = origin in zones or destination in zones
             if not affected_trip:
                 continue
-        factor *= dr["factor"]
+        factor *= 1 + (dr["factor"] - 1) * overlap / 3600
     return factor
 
 
-def scale_taz_trips_by_hour(trips_xml: Path, demand_rules: list) -> Path:
+def scale_taz_trips_by_hour(od_files: list, demand_rules: list, output_dir: Path) -> Path:
     """
-    What-if demand change (deterministic scaling factor) on the od2trips output.
+    What-if demand change on OD matrices.
     rules: [{"taz": [...] (empty = every zone), "direction": "from" | "to" | "both", "begin": s, "end": s, "factor": f}]
     (see scripts/src/whatif/scenario.resolve_demand).
-    OD matrices remain untouched.
+    Scaled copies are then saved in output_dir and original ODs remain untouched.
     """
-    tree = ET.parse(trips_xml)
-    root = tree.getroot()
-    seen = defaultdict(int)  # trips read so far with that factor
-    added_trips = defaultdict(int) # trips written so far with the factor
-    kept_trips = []
-    for trip in list(root):
-        factor = _trip_factor(trip, demand_rules) if trip.tag == "trip" else 1.0
-        if factor == 1.0: # trip remains as it is (no demand rule applied)
-            kept_trips.append(trip)
-            continue
-        seen[factor] += 1
-        counter = seen[factor] # number of read trips for the specific factor
-        should_have_ntrips = int(counter * factor + 0.5) # round(counter * factor) rounded half up
-        still_to_add = should_have_ntrips - added_trips[factor]
-        added_trips[factor] = should_have_ntrips
-        if still_to_add > 0:
-            kept_trips.append(trip)
-        for t in range(1, still_to_add): # extra trips: same attributes, new id
-            kept_trips.append(ET.Element("trip", {**trip.attrib, "id": f"{trip.get('id')}_x{t}"}))
-    print(   
-        Fore.MAGENTA + f"Demand change: {sum(1 for t in root if t.tag == 'trip')} -> "
-        f"{sum(1 for kt in kept_trips if kt.tag == 'trip')} trips"
-    )
-    root[:] = kept_trips # old list --> new list of trips
-    tree.write(trips_xml, encoding="utf-8", xml_declaration=True)
-    
-    return trips_xml
+    output_dir.mkdir(parents=True, exist_ok=True)
+    scaled_od_files = []
+    before = after = 0.0
+    for od in od_files:
+        # name format for the file: hHH.mtx
+        hour = int(re.fullmatch(r"h(\d+)\.mtx", Path(od).name).group(1))
+        scaled_od = output_dir / Path(od).name
+        with open(od, "r", encoding="utf-8") as f_in, open(scaled_od, "w", encoding="utf-8") as f_out:
+            for data_od_pair in f_in:
+                info = data_od_pair.split()
+                if len(info) == 3 and info[0].isdigit() and info[1].isdigit():
+                    flow = float(info[2])
+                    new_flow = flow * _hour_factor(origin=info[0], destination=info[1], hour=hour, demand_rules=demand_rules)
+                    before, after = before+flow, after+new_flow
+                    data_od_pair = f"{info[0]}\t{info[1]}\t{round(new_flow, 2)}\n"   
+                f_out.write(data_od_pair)
+        scaled_od_files.append(scaled_od)
+    print(Fore.MAGENTA + f"Demand change on the O/D matrices: {before:.0f} -> {after:.0f} vehicles")
+    return scaled_od_files

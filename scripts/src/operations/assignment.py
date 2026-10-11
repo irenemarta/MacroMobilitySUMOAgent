@@ -19,8 +19,8 @@ from scripts.src.operations.marouter_cycle import (
     DEFAULT_DAY_SCALE,
     build_final_sumocfg,
     build_sumocfg_day,
-    run_cycle,
-    run_macro_assignment_day_iterative,
+    run_cycle_peaks,
+    run_assignement_cycle_day_iterative,
 )
 from scripts.src.operations.od_extension import extend_subset_trips
 
@@ -39,7 +39,7 @@ def run_pipeline_for(
     n_rounds: int = 3,
     scouting_duration: Optional[int] = None,
 ):
-    routes_macro_iterated = run_cycle(
+    routes_macro_iterated = run_cycle_peaks(
         scenario, period, ctx,
         n_rounds=n_rounds,
         scouting_step=scouting_duration,
@@ -73,7 +73,7 @@ def main(
                     n_rounds=n_rounds, scouting_duration=scouting_duration,
                 ) 
         if run_day:
-            routes_day = run_macro_assignment_day_iterative(
+            routes_day = run_assignement_cycle_day_iterative(
                 scenario, ctx.taz_file, n_rounds=day_rounds, scale=day_scale
             )
             routes_day_final = extend_subset_trips(
