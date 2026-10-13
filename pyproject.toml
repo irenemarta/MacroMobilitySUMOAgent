@@ -1,5 +1,5 @@
 [project]
-name = "dtsumo"
+name = "macromobility-sumo-agent"
 version = "0.1.0"
 description = "Digital Twin for SUMO: Python package for traffic simulation and analysis using SUMO as validation tool. Useful to produce traffic scenarios and to evaluate the impact of road closures, traffic management strategies, and other interventions on traffic flow and congestion using the specific chatbot."
 readme = "README.md"
@@ -10,11 +10,13 @@ dependencies = [
     "contextily>=1.7.0",
     "dotenv>=0.9.9",
     "eclipse-sumo==1.28.*",
+    "fastapi>=0.143.0",
     "geopandas>=1.1.2",
     "geopy>=2.4.1",
     "ipykernel>=7.1.0",
     "matplotlib>=3.10.8",
     "networkx>=3.6.1",
+    "openai>=3.29.0",
     "pandas>=2.3.3",
     "pandera>=0.29.0",
     "pymssql>=2.3.11",
@@ -26,6 +28,8 @@ dependencies = [
     "sqlalchemy>=2.0.46",
     "sumolib==1.28.*",
     "tqdm>=4.70.1",
+    "traci>=1.28.0",
+    "uvicorn[standard]>=0.54.0",
 ]
 
 [dependency-groups]
@@ -36,6 +40,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dtsumo", "src/agent"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

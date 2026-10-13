@@ -99,6 +99,7 @@ class CfgAttributes:
 
         if self.meso:
             max_l = _get_edge_max_length(str(self.net))
+            cmd += os.environ.get("DTSUMO_SUMO_ARGS", "").split()  # extra meso options for experiments
             cmd += [
                 "--mesosim",
                 # "--meso-recheck", "10", # to delay traffic flow into a fully occupied segment.

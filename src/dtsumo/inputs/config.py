@@ -7,8 +7,16 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv() # reads variables from a .env file and sets them in os.environ
+"""
+HACK: SUMO used by the pipeline: the one installed in the project (eclipse-sumo) by default,
+DTSUMO_SUMO=system keeps the system one (e.g. to rerun with SUMO 1.26)
+"""
+if os.getenv("DTSUMO_SUMO", "project") == "project":
+    import sumo
+    os.environ["SUMO_HOME"] = sumo.SUMO_HOME
+    os.environ["PATH"] = f"{sumo.SUMO_HOME}/bin{os.pathsep}{os.environ['PATH']}"
 
-SEED = int(os.environ.get("DTSUMO_SEED", 2026))
+SEED = int(os.environ.get("DTSUMO_SEED", 36))
 
 CONTROLLED_TLS = {
     "joinedS_5726802070_#5more",
@@ -67,6 +75,9 @@ PERIODS = {
 DUA_METHODS = ["DUA", "LOGIT", "GAWRON"]
 TLS_VARIANTS = ["no_TLS", "with_TLS"]
 
+# what-if scenarios yaml
+SCENARIOS_YAML = OUTPUT_BASE / "scenarios.yaml"
+# calibration scenarios
 SCENARIOS  = list(DUA_METHODS)  # "DUA", "LOGIT", "GAWRON"
 SCENARIOS += [f"MA_{t}" for t in TLS_VARIANTS]  # "MA_no_TLS", "MA_with_TLS"
 SCENARIOS += [f"base_{t}" for t in TLS_VARIANTS]  # "base_no_TLS", "base_with_TLS"
@@ -76,7 +87,7 @@ CFG_DIR  = OUTPUT_BASE / "config"
 ROUTES_DIR  = OUTPUT_BASE / "routes"
 SUMO_OUTPUT = OUTPUT_BASE / "simulation-out"
 OUTPUT_DIR_ADD = OUTPUT_BASE / "additionals"
-OUTPUT_DIR_PARSING = OUTPUT_BASE / "parsed"
+OUTPUT_DIR_PARSING = DERIVED / "parsed"
 DUA_WORKDIR = OUTPUT_BASE / "dua-workdir-3"
 MAROUTER_WORKDIR = OUTPUT_BASE / "marouter-workdir"
 

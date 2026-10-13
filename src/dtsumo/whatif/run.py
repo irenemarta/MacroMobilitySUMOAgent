@@ -14,7 +14,7 @@ Another seed: DTSUMO_SEED=42 uv run python -m src.whatif.run scenario.json
 """
 
 import contextlib, fcntl, json, yaml, random, sys, shutil
-import click, sumolib, subprocess
+import os, click, sumolib, subprocess
 from pathlib import Path
 from colorama import Fore, init
 
@@ -49,7 +49,7 @@ FREQ = 60 * 5  # detectors
 EXTENSION_SEED = (
     42  # same as assignment.main, so the 4.3 sampling matches the reference run
 )
-SCENARIOS_YAML = Path("data/scenarios.yaml")
+
 
 
 def _print_report_(resolved_scen: dict, disturbance: list):
@@ -145,6 +145,7 @@ def run_scenario(
         **resolved_scen,
         "disturbances": dist,
         "sumo_version": sumo_version,
+        "sumo_args": os.getenv("DTSUMO_SUMO_ARGS", ""),
     }
     _save_json_info_(info, work_dir)
 
@@ -216,7 +217,7 @@ def run_scenario(
     return {"id": run_label, "det_dir": str(det_out.resolve()), "disturbances": dist, "sumo_version": sumo_version}
 
 
-def record(entries: list, path: Path = SCENARIOS_YAML) -> None:
+def record(entries: list, path: Path = cfg.SCENARIOS_YAML) -> None:
     # same id -> overwritten
     path.parent.mkdir(parents=True, exist_ok=True)
     # .lock so that two scenarios finishing together cannot not overwrite each other's entry
@@ -276,7 +277,7 @@ def cli(scenario_file, variant, rounds, scale, check, as_json):
         raise click.ClickException(str(e))
     if not check:
         record([entry])
-        print(Fore.GREEN + f"what-if {entry['id']} done, recorded in {SCENARIOS_YAML}")
+        print(Fore.GREEN + f"what-if {entry['id']} done, recorded in {cfg.SCENARIOS_YAML}")
 
 
 if __name__ == "__main__":

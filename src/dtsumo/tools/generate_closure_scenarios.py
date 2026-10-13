@@ -13,7 +13,7 @@ from colorama import init, Fore
 import dtsumo.inputs.config as cfg
 from dtsumo.operations.marouter_cycle import DEFAULT_DAY_SCALE
 from dtsumo.inputs.dayODs import generate_hour_matrices
-from dtsumo.whatif.run import N_ROUNDS, SCENARIOS_YAML, record, run_scenario
+from dtsumo.whatif.run import N_ROUNDS, record, run_scenario
 from dtsumo.whatif.scenario import ScenarioError, disturbances, load_scenario
 
 init(autoreset=True)
@@ -153,7 +153,7 @@ def main(folder: Optional[Path], workers: int):
             entries.append(future.result())
 
     record(entries)
-    print(f"\nWrote {len(entries)} scenarios to {SCENARIOS_YAML}")
+    print(f"\nWrote {len(entries)} scenarios to {cfg.SCENARIOS_YAML}")
 
 
 if __name__ == "__main__":
