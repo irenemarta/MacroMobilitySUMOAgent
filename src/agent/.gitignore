@@ -1,0 +1,29 @@
+# Configurazione e strumenti della macchina
+config.local.json
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+.vscode/
+.idea/
+.agents/
+.codex/
+.aws/
+
+# Dipendenze esterne e modelli, anche se installati dentro il progetto
+llama.cpp/
+modelli/
+models/
+*.gguf
+*.deb
+
+# Cache e risultati rigenerabili
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.sqlite
+*.sqlite-*
+scenari/
+sim/
+base.rou.xml

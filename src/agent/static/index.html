@@ -1,0 +1,1082 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agente what-if · Torino</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<style>
+:root {
+  --sfondo: #f3f4f6;
+  --pannello: #ffffff;
+  --bordo: #dde1e7;
+  --testo: #1f2430;
+  --tenue: #6b7280;
+  --accento: #2563eb;
+  --rosso: #dc2626;
+  --blu: #1d4ed8;
+  --verde: #15803d;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+  font-size: 14px;
+  color: var(--testo);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--sfondo); }
+button, select, textarea { font: inherit; color: inherit; }
+button {
+  border: 1px solid var(--bordo); background: #fff; border-radius: 6px;
+  padding: 5px 12px; cursor: pointer; white-space: nowrap;
+}
+button:hover:not(:disabled) { background: #eef1f5; }
+button:disabled { opacity: .45; cursor: default; }
+button.primario { background: var(--accento); border-color: var(--accento); color: #fff; }
+button.primario:hover:not(:disabled) { background: #1d4fd0; }
+select { border: 1px solid var(--bordo); border-radius: 6px; padding: 5px 8px; background: #fff; }
+.tenue { color: var(--tenue); }
+
+#app { display: grid; grid-template-columns: 60% 40%; height: 100vh; }
+
+/* --- colonna della mappa --- */
+#col-mappa { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+#barra {
+  display: flex; flex-direction: column; gap: 7px; padding: 8px 12px;
+  background: var(--pannello); border-bottom: 1px solid var(--bordo);
+}
+.riga-barra { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.campo { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 240px; font-weight: 600; }
+.campo select { flex: 1; min-width: 0; font-weight: 400; }
+.interruttore { display: inline-flex; }
+.interruttore button { border-radius: 0; }
+.interruttore button:first-child { border-radius: 6px 0 0 6px; }
+.interruttore button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.interruttore button.attivo { background: var(--testo); border-color: var(--testo); color: #fff; }
+#legenda { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 12px; color: var(--tenue); }
+.voce { display: inline-flex; align-items: center; gap: 5px; }
+.simbolo { display: inline-block; width: 22px; border-top: 3px solid var(--c); }
+.simbolo.tratteggio { border-top-style: dashed; }
+.simbolo.alone { height: 10px; border: none; border-radius: 5px; background: linear-gradient(var(--c) 0 3.5px, #56627a 3.5px 6.5px, var(--c) 6.5px); }
+.simbolo.punto { width: 11px; height: 11px; border: 2px solid #7c2d12; border-radius: 50%; background: var(--c); }
+.scala { display: inline-flex; gap: 2px; }
+.chip { display: inline-block; min-width: 16px; height: 15px; padding: 0 4px; border-radius: 3px; color: #fff; font-style: normal; font-size: 11px; line-height: 15px; text-align: center; vertical-align: middle; }
+
+#contenitore-mappa { position: relative; flex: 1; min-height: 0; }
+#mappa { position: absolute; inset: 0; background: #e5e7eb; }
+#mappa .leaflet-tile-pane { filter: grayscale(.85) contrast(.9) brightness(1.05); }
+.leaflet-tooltip.tip { font-size: 12px; line-height: 1.35; }
+.leaflet-tooltip.tip hr { border: none; border-top: 1px solid var(--bordo); margin: 4px 0; }
+.leaflet-tooltip.etichetta-vel {
+  background: #7c3aed; color: #fff; border: 2px solid #fff; border-radius: 12px;
+  padding: 1px 8px; font-weight: 700; font-size: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.leaflet-tooltip.etichetta-vel::before { display: none; }
+.popup-via table { border-collapse: collapse; margin-top: 4px; }
+.popup-via th { text-align: left; font-weight: 500; color: var(--tenue); padding: 1px 10px 1px 0; }
+
+/* riquadro dello scenario e dei risultati, sopra la mappa */
+#pannello {
+  position: absolute; top: 10px; right: 10px; z-index: 1000;
+  width: 340px; max-width: calc(100% - 20px); max-height: calc(100% - 20px);
+  display: flex; flex-direction: column;
+  background: rgba(255,255,255,.97); border: 1px solid var(--bordo); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15,23,42,.14);
+}
+#pannello[hidden] { display: none; }
+#pannello > header { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; border-bottom: 1px solid var(--bordo); }
+#pannello-titolo { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pannello-riduci { padding: 0 8px; line-height: 22px; }
+#pannello.ridotto #pannello-corpo { display: none; }
+#pannello-corpo { overflow: auto; padding: 8px 12px 12px; display: flex; flex-direction: column; gap: 10px; }
+#pannello h3, #sim-titolo { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--tenue); margin: 0 0 4px; }
+#sim-titolo { cursor: pointer; }
+#blocco-sim[open] #sim-titolo { margin-bottom: 6px; }
+#scheda-scenario:empty, #avvisi-sim:empty, #indicatori:empty, #vie-variate:empty { display: none; }
+.descrizione { margin: 0; }
+.interventi { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.interventi li { display: grid; grid-template-columns: 26px 1fr; gap: 6px; align-items: start; }
+.interventi .segno { height: 0; margin-top: 8px; border-top: 4px solid var(--c); }
+.interventi .segno.tratteggio { border-top-style: dashed; }
+.nota { margin: 0; font-size: 12px; color: var(--tenue); }
+.avvisi { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.avvisi li { background: #fef9c3; border: 1px solid #fde047; color: #713f12; border-radius: 6px; padding: 5px 8px; font-size: 12px; }
+.avvisi li::first-letter { text-transform: uppercase; }
+.errore-box { background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d; border-radius: 6px; padding: 6px 8px; font-size: 13px; }
+.errore-box pre { margin: 6px 0 0; max-height: 180px; overflow: auto; font-size: 11px; white-space: pre-wrap; background: #fff5f5; padding: 6px; border-radius: 4px; }
+.fasi { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.fasi li { display: grid; grid-template-columns: 18px 1fr auto; gap: 6px; align-items: center; }
+.fasi .dur { color: var(--tenue); font-size: 12px; }
+.fasi li::before { content: ""; width: 10px; height: 10px; border-radius: 50%; justify-self: center; }
+.fasi li.in-corso::before { border: 2px solid var(--accento); border-right-color: transparent; animation: gira .8s linear infinite; }
+.fasi li.fatta::before { content: "✓"; width: auto; height: auto; color: var(--verde); font-weight: 700; }
+.fasi li.fallita::before { content: "✕"; width: auto; height: auto; color: var(--rosso); font-weight: 700; }
+.barra-avanz { height: 6px; background: #e5e7eb; border-radius: 3px; overflow: hidden; }
+.barra-avanz > div { height: 100%; width: 0; background: var(--accento); transition: width .2s; }
+#avanz-testo { font-size: 12px; color: var(--tenue); margin-top: 3px; }
+table.indicatori { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.indicatori th, table.indicatori td { padding: 3px 4px; text-align: right; border-bottom: 1px solid #eef0f3; }
+table.indicatori th:first-child { text-align: left; font-weight: 500; }
+table.indicatori thead th { color: var(--tenue); font-weight: 500; font-size: 12px; }
+.meglio { color: var(--blu); font-weight: 600; }
+.peggio { color: var(--rosso); font-weight: 600; }
+.top-vie { margin: 0; padding: 0; list-style: none; counter-reset: n; }
+.top-vie button {
+  width: 100%; display: grid; grid-template-columns: 1fr auto; gap: 8px; text-align: left;
+  border: none; border-radius: 4px; padding: 4px 6px; background: transparent;
+}
+.top-vie button:hover { background: #eef1f5; }
+.top-vie .nome { overflow: hidden; text-overflow: ellipsis; }
+.top-vie .nome::before { counter-increment: n; content: counter(n) ". "; color: var(--tenue); }
+.top-vie .var { font-size: 12px; }
+
+/* --- colonna destra: chat e traccia --- */
+#col-destra { display: grid; grid-template-rows: minmax(0, 11fr) minmax(0, 9fr); min-width: 0; min-height: 0; border-left: 1px solid var(--bordo); }
+.sezione { display: flex; flex-direction: column; min-height: 0; background: var(--pannello); }
+#traccia { border-top: 1px solid var(--bordo); }
+.intest { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 1px solid var(--bordo); }
+.intest h2 { flex: 1; margin: 0; font-size: 14px; }
+.stato { font-size: 12px; display: inline-flex; align-items: center; gap: 5px; color: var(--tenue); }
+.stato::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #9ca3af; }
+.stato.ok::before { background: #22c55e; }
+.stato.ko { color: var(--rosso); }
+.stato.ko::before { background: var(--rosso); }
+#messaggi { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.banner { background: #fee2e2; border: 1px solid #fca5a5; color: #7f1d1d; border-radius: 6px; padding: 7px 10px; font-size: 13px; }
+.banner[hidden] { display: none; }
+.msg { max-width: 88%; padding: 8px 11px; border-radius: 12px; white-space: pre-wrap; line-height: 1.42; overflow-wrap: anywhere; }
+.msg.utente { align-self: flex-end; background: var(--accento); color: #fff; border-bottom-right-radius: 4px; }
+.msg.agente { align-self: flex-start; background: #eef0f3; border-bottom-left-radius: 4px; }
+.msg.errore { align-self: flex-start; background: #fee2e2; color: #7f1d1d; border: 1px solid #fca5a5; }
+.msg.attesa { color: var(--tenue); }
+.msg.attesa::after { content: "…"; animation: lampeggia 1s steps(2) infinite; }
+.msg code { background: rgba(0,0,0,.07); padding: 0 3px; border-radius: 3px; font-size: 12px; }
+.msg.nota { align-self: center; max-width: 95%; background: #fef9c3; border: 1px solid #fde047; color: #713f12; font-size: 12px; padding: 4px 9px; }
+.benvenuto { color: var(--tenue); font-size: 13px; line-height: 1.5; }
+.benvenuto button { display: block; margin: 4px 0; border-style: dashed; text-align: left; white-space: normal; }
+#modulo { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--bordo); }
+#testo { flex: 1; resize: none; padding: 7px 10px; border: 1px solid var(--bordo); border-radius: 6px; min-height: 40px; }
+#testo:focus, select:focus, button:focus-visible { outline: 2px solid #93c5fd; outline-offset: 1px; }
+
+#righe { flex: 1; overflow: auto; padding: 4px 0 8px; font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 12px; }
+.riga .testa, .riga summary { display: grid; grid-template-columns: 20px 1fr auto; gap: 7px; align-items: center; padding: 3px 12px; }
+.riga summary { cursor: pointer; list-style: none; }
+.riga summary::-webkit-details-marker { display: none; }
+.riga summary:hover { background: #f3f5f8; }
+.riga .titolo { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.riga details[open] .titolo { white-space: normal; overflow-wrap: anywhere; }
+.riga summary .titolo::before { content: "▸ "; color: var(--tenue); }
+.riga details[open] summary .titolo::before { content: "▾ "; }
+.riga .t { color: var(--tenue); }
+.riga pre { margin: 2px 12px 6px 39px; padding: 7px 9px; max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: #f6f7f9; border: 1px solid var(--bordo); border-radius: 6px; }
+.riga.inizio_turno { margin-top: 5px; border-top: 1px dashed var(--bordo); padding-top: 3px; }
+.riga.ko .titolo { color: var(--rosso); }
+.icona { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 4px; font-size: 11px; color: #fff; background: var(--c, #9ca3af); font-family: system-ui, sans-serif; }
+.riga.chiamata_modello .icona { --c: #7c3aed; }
+.riga.testo_modello .icona { --c: #0891b2; }
+.riga.chiamata_tool .icona { --c: #d97706; }
+.riga.risultato_tool .icona { --c: #16a34a; }
+.riga.risultato_tool.ko .icona, .riga.errore .icona { --c: var(--rosso); }
+.riga.scenario_creato .icona { --c: #db2777; }
+.riga.inizio_turno .icona, .riga.fine_turno .icona { --c: #64748b; }
+#attesa { display: flex; align-items: center; gap: 8px; padding: 4px 12px; color: var(--tenue); }
+#attesa[hidden] { display: none; }
+.spinner { width: 12px; height: 12px; border: 2px solid var(--accento); border-right-color: transparent; border-radius: 50%; animation: gira .8s linear infinite; }
+@keyframes gira { to { transform: rotate(360deg); } }
+@keyframes lampeggia { 50% { opacity: .2; } }
+
+@media (max-width: 900px) {
+  #app { grid-template-columns: 100%; height: auto; }
+  #col-mappa { height: 75vh; }
+  #col-destra { grid-template-rows: 60vh 50vh; border-left: none; }
+  #pannello { width: 300px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <section id="col-mappa">
+    <header id="barra">
+      <div class="riga-barra">
+        <label class="campo">Scenario
+          <select id="scelta-scenario"><option value="">— nessuno scenario —</option></select>
+        </label>
+        <button id="simula" class="primario" disabled>Simula</button>
+        <div class="interruttore" role="group" aria-label="Situazione mostrata sulla mappa">
+          <button id="modo-prima" disabled title="Velocità media nel riferimento">Prima</button>
+          <button id="modo-dopo" disabled title="Variazione rispetto al riferimento">Dopo</button>
+        </div>
+      </div>
+      <div id="legenda"></div>
+    </header>
+    <div id="contenitore-mappa">
+      <div id="mappa"></div>
+      <aside id="pannello" hidden>
+        <header>
+          <span id="pannello-titolo"></span>
+          <button id="pannello-riduci" title="Riduci o espandi">▾</button>
+        </header>
+        <div id="pannello-corpo">
+          <div id="scheda-scenario"></div>
+          <details id="blocco-sim" open hidden>
+            <summary id="sim-titolo">Simulazione</summary>
+            <ol class="fasi" id="fasi"></ol>
+            <div id="avanzamento" hidden>
+              <div class="barra-avanz"><div id="barra-piena"></div></div>
+              <div id="avanz-testo"></div>
+            </div>
+          </details>
+          <div id="errore-sim" class="errore-box" hidden></div>
+          <ul class="avvisi" id="avvisi-sim"></ul>
+          <div id="indicatori"></div>
+          <div id="vie-variate"></div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="col-destra">
+    <section id="chat" class="sezione">
+      <header class="intest">
+        <h2>Chat</h2>
+        <span id="stato-llm" class="stato">controllo del modello…</span>
+        <button id="nuova">Nuova conversazione</button>
+      </header>
+      <div id="messaggi" aria-live="polite">
+        <div id="avviso-llm" class="banner" hidden></div>
+      </div>
+      <form id="modulo">
+        <textarea id="testo" rows="2" placeholder="Scrivi una richiesta what-if (Invio per inviare, Maiusc+Invio per andare a capo)"></textarea>
+        <button id="invia" class="primario">Invia</button>
+      </form>
+    </section>
+    <section id="traccia" class="sezione">
+      <header class="intest"><h2>Traccia dell'agente</h2><span class="tenue" style="font-size:12px">clic su una riga per i dettagli</span></header>
+      <div id="righe"><div id="attesa" hidden><span class="spinner"></span><span id="attesa-testo"></span></div></div>
+    </section>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* Agente what-if SUMO: mappa della rete, chat, traccia dell'agente e simulazione.
+   Gli eventi dei turni e delle simulazioni arrivano con Server-Sent Events da /api/lavori/<id>/eventi. */
+
+if (!window.L) {
+  document.body.innerHTML = '<p class="banner" style="margin:20px">Leaflet non è stato caricato: ' +
+    "serve l'accesso a unpkg.com (CDN di Leaflet).</p>";
+  throw new Error("Leaflet mancante");
+}
+
+// ---------- utilità ----------
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+  ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const nf0 = new Intl.NumberFormat("it-IT", {maximumFractionDigits: 0});
+const nf1 = new Intl.NumberFormat("it-IT", {maximumFractionDigits: 1});
+const num = (x, nf = nf1) => (x == null ? "–" : nf.format(x));
+const segno = (x, nf = nf0) => (x > 0 ? "+" : x < 0 ? "−" : "±") + nf.format(Math.abs(x));
+const pct = (v) => (v == null ? "" : `${segno(v, nf1)}%`);
+const riassunto = (t, n = 110) => { t = String(t ?? "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
+function durata(s) { return s == null ? "" : s < 1 ? `${nf0.format(s * 1000)} ms` : `${nf1.format(s)} s`; }
+function minSec(s) {
+  if (s == null) return "–";
+  const tot = Math.round(s);
+  return `${Math.floor(tot / 60)}:${String(tot % 60).padStart(2, "0")}`;
+}
+function variazione(p, d) { return p ? (d - p) / p * 100 : null; }
+function nuovoId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+// markdown minimo e sicuro per le risposte del modello: **grassetto** e `codice`
+const formatta = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`\n]+)`/g, "<code>$1</code>");
+
+async function chiama(url, opzioni = {}) {
+  let r;
+  try { r = await fetch(url, opzioni); } catch { throw new Error("il server della GUI non risponde"); }
+  if (!r.ok) {
+    let messaggio = `${r.status} ${r.statusText}`;
+    try { const j = await r.json(); if (j.detail) messaggio = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail); } catch {}
+    const e = new Error(messaggio);
+    e.status = r.status;
+    throw e;
+  }
+  return r.json();
+}
+const postJSON = (url, dati) => chiama(url, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(dati)});
+
+// ---------- stato ----------
+const stato = {
+  conversazione: nuovoId(),
+  archi: new Map(),        // id → {p: proprietà, ll: coordinate, zoom, spostata, linea}
+  vie: new Map(),          // nome della via → [id degli archi]
+  nodi: {},                // id → [lon, lat]
+  dettaglio: null,         // scenario attivo: {scenario, sovrapposizione, errori}
+  risultati: null,         // risultati della simulazione dello scenario attivo
+  modo: "rete",            // rete | prima | dopo
+  turno: null,             // turno dell'agente in corso
+  simulazione: null,       // simulazione in corso: {es, id, eventi}
+  richiestaScenario: 0,    // scarta le risposte superate quando si cambia scenario in fretta
+  avvisiScheda: new Set(), // avvisi già mostrati nella scheda dello scenario
+  popup: null,
+};
+
+const COLORI = {rete: "#56627a", nessunDato: "#cdd2d9", evidenza: "#facc15", selezione: "#22d3ee",
+                incrocio: "#f59e0b", chiusura: "#dc2626", velocita: "#7c3aed"};
+const SCALA_VEL = [[10, "#7f1d1d", "&lt;10"], [20, "#ea580c", "10–20"], [30, "#ca8a04", "20–30"],
+                   [40, "#65a30d", "30–40"], [Infinity, "#15803d", "≥40"]];
+const COLORI_LIVELLO = {"2": "#b91c1c", "1": "#f87171", "0": "#cdd2d9", "-1": "#60a5fa", "-2": "#1d4ed8"};
+const peso = (corsie) => ({1: 2.5, 2: 3.5, 3: 4.5}[corsie] || 5.5);
+const coloreVelocita = (v) => SCALA_VEL.find(([limite]) => v < limite)[1];
+
+// ---------- mappa ----------
+const mappa = L.map("mappa", {preferCanvas: true, zoomControl: false});
+L.control.zoom({position: "bottomright"}).addTo(mappa);
+L.control.scale({position: "bottomleft", imperial: false}).addTo(mappa);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+}).addTo(mappa);
+const tela = L.canvas({tolerance: 5});
+new ResizeObserver(() => mappa.invalidateSize()).observe($("#mappa"));   // la legenda può andare a capo
+// ordine di disegno: aloni (selezione, vie cercate) sotto la rete; sovrapposizione e incroci sopra
+const livelli = {};
+for (const nome of ["rete", "selezione", "evidenze", "bordo", "scenario", "marcatori"]) livelli[nome] = L.layerGroup().addTo(mappa);
+
+/* Le due direzioni di una strada a doppio senso hanno la stessa geometria: ciascuna viene
+   spostata alla propria destra di mezzo spessore, in pixel, e ricalcolata a ogni zoom. */
+function sposta(ll, px, z) {
+  if (ll.length < 2) return ll;
+  const p = ll.map((x) => mappa.project(x, z));
+  const normali = [];
+  for (let i = 0; i < p.length - 1; i++) {
+    const dx = p[i + 1].x - p[i].x, dy = p[i + 1].y - p[i].y, l = Math.hypot(dx, dy) || 1;
+    normali.push([-dy / l, dx / l]);                   // destra rispetto al verso di marcia
+  }
+  return p.map((q, i) => {
+    const a = normali[Math.max(0, i - 1)], b = normali[Math.min(normali.length - 1, i)];
+    let nx = a[0] + b[0], ny = a[1] + b[1];
+    const l = Math.hypot(nx, ny);
+    if (l < 1e-6) { nx = b[0]; ny = b[1]; } else { const k = Math.min(2 / l, 2) / l; nx *= k; ny *= k; }
+    return mappa.unproject(L.point(q.x + nx * px, q.y + ny * px), z);
+  });
+}
+
+function geometria(id) {
+  const a = stato.archi.get(id);
+  if (!a.p.doppio) return a.ll;
+  const z = mappa.getZoom();
+  if (a.zoom !== z) { a.spostata = sposta(a.ll, peso(a.p.corsie) / 2 + 0.6, z); a.zoom = z; }
+  return a.spostata;
+}
+
+mappa.on("zoomend", () => {
+  for (const [id, a] of stato.archi) if (a.p.doppio && a.linea) a.linea.setLatLngs(geometria(id));
+  for (const nome of ["selezione", "evidenze", "bordo", "scenario"])
+    livelli[nome].eachLayer((l) => { if (l.arco) l.setLatLngs(geometria(l.arco)); });
+});
+
+function riordina() {
+  livelli.evidenze.eachLayer((l) => l.bringToBack());
+  livelli.selezione.eachLayer((l) => l.bringToBack());
+  livelli.bordo.eachLayer((l) => l.bringToFront());
+  livelli.scenario.eachLayer((l) => l.bringToFront && l.bringToFront());
+  livelli.marcatori.eachLayer((l) => l.bringToFront());
+}
+
+function limitiArchi(ids) {
+  const b = L.latLngBounds([]);
+  for (const id of ids) { const a = stato.archi.get(id); if (a) a.ll.forEach((x) => b.extend(x)); }
+  return b;
+}
+
+// larghezza coperta dal riquadro dello scenario sul lato destro della mappa
+function margineRiquadro() {
+  const p = $("#pannello");
+  return p.hidden || p.classList.contains("ridotto") ? 0 : p.offsetWidth + 20;
+}
+
+function inquadra(limiti) {
+  mappa.flyToBounds(limiti, {paddingTopLeft: [40, 40], paddingBottomRight: [margineRiquadro() + 40, 40],
+                             maxZoom: 17, duration: 0.6});
+}
+
+function mostraSeFuori(limiti) {
+  if (!limiti.isValid()) return;
+  const dim = mappa.getSize();
+  const visibile = L.latLngBounds(mappa.containerPointToLatLng([0, dim.y]),
+                                  mappa.containerPointToLatLng([dim.x - margineRiquadro(), 0]));
+  if (!visibile.contains(limiti)) inquadra(limiti);
+}
+
+function alone(id, colore, gruppo, extra, opacita = 0.9) {
+  const a = stato.archi.get(id);
+  if (!a) return;
+  const l = L.polyline(geometria(id), {renderer: tela, color: colore, weight: peso(a.p.corsie) + extra,
+                                       opacity: opacita, interactive: false});
+  l.arco = id;
+  gruppo.addLayer(l);
+}
+
+async function caricaRete() {
+  const [rete, nodi] = await Promise.all([chiama("/api/rete"), chiama("/api/nodi")]);
+  stato.nodi = nodi;
+  const limiti = L.latLngBounds([]);
+  for (const f of rete.features) {
+    const p = f.properties;
+    const ll = f.geometry.coordinates.map(([lon, lat]) => L.latLng(lat, lon));
+    ll.forEach((x) => limiti.extend(x));
+    stato.archi.set(p.id, {p, ll, zoom: null, spostata: null, linea: null});
+    if (p.nome) {
+      if (!stato.vie.has(p.nome)) stato.vie.set(p.nome, []);
+      stato.vie.get(p.nome).push(p.id);
+    }
+  }
+  mappa.fitBounds(limiti, {padding: [10, 10]});
+  for (const [id, a] of stato.archi) {
+    a.linea = L.polyline(geometria(id), {renderer: tela, color: COLORI.rete, weight: peso(a.p.corsie), opacity: 0.8})
+      .bindTooltip(() => tooltipArco(id), {sticky: true, className: "tip"})
+      .on("click", (e) => { L.DomEvent.stopPropagation(e); selezionaVia(a.p.nome, id, e.latlng); })
+      .addTo(livelli.rete);
+  }
+}
+
+function tooltipArco(id) {
+  const p = stato.archi.get(id).p;
+  let h = `<b>${esc(p.nome || "(arco senza nome)")}</b><br>${num(p.kmh, nf0)} km/h · ${p.corsie} ${p.corsie === 1 ? "corsia" : "corsie"}`;
+  const r = stato.risultati && stato.risultati.archi[id];
+  if (r && stato.modo !== "rete") {
+    const vel = (v) => (v == null ? "–" : `${num(v, nf0)} km/h`);
+    h += `<hr>Veicoli entrati: ${r.veicoli[0]} → ${r.veicoli[1]} ${pct(variazione(r.veicoli[0], r.veicoli[1]))}` +
+         `<br>Velocità media: ${vel(r.vel_kmh[0])} → ${vel(r.vel_kmh[1])}` +
+         `<br>Tempo perso (min:s): ${minSec(r.perso_s[0])} → ${minSec(r.perso_s[1])}` +
+         `<br><i>${esc(r.motivo)}</i>`;
+  }
+  return h;
+}
+
+// Colore della rete secondo il modo: neutro, velocità nel riferimento, variazione
+function ridisegnaRete() {
+  const ris = stato.risultati;
+  for (const [id, a] of stato.archi) {
+    if (!a.linea) continue;
+    const r = ris && ris.archi[id];
+    let colore = COLORI.rete, opacita = 0.8, extra = 0;
+    if (stato.modo === "prima") {
+      colore = r && r.vel_kmh[0] != null ? coloreVelocita(r.vel_kmh[0]) : COLORI.nessunDato;
+      opacita = 0.95;
+    } else if (stato.modo === "dopo") {
+      colore = r ? COLORI_LIVELLO[r.livello] : COLORI.nessunDato;
+      opacita = r && r.livello ? 1 : 0.75;
+      extra = r && Math.abs(r.livello) === 2 ? 1.5 : 0;
+    }
+    a.linea.setStyle({color: colore, opacity: opacita, weight: peso(a.p.corsie) + extra});
+  }
+  aggiornaLegenda();
+}
+
+function impostaModo(modo) {
+  stato.modo = modo;
+  $("#modo-prima").classList.toggle("attivo", modo === "prima");
+  $("#modo-dopo").classList.toggle("attivo", modo === "dopo");
+  ridisegnaRete();
+}
+
+function aggiornaLegenda() {
+  const simbolo = (forma, colore, testo) => `<span class="voce"><i class="simbolo ${forma}" style="--c:${colore}"></i>${testo}</span>`;
+  const chip = (colore, testo = "") => `<i class="chip" style="background:${colore}">${testo}</i>`;
+  const voci = [];
+  if (stato.modo === "prima") {
+    voci.push(`<span class="voce">velocità media prima <span class="scala">${SCALA_VEL.map(([, c, t]) => chip(c, t)).join("")}</span> km/h</span>`,
+              `<span class="voce">${chip(COLORI.nessunDato)} nessun veicolo</span>`);
+  } else if (stato.modo === "dopo") {
+    const s = stato.risultati.soglie || {};
+    const soglia = `sotto soglia: meno di ${s.veicoli} veicoli e del ${s.veicoli_rel * 100}%, meno di ${s.vel_kmh} km/h e del ${s.vel_rel * 100}%`;
+    voci.push(`<span class="voce"><span class="scala">${chip(COLORI_LIVELLO[2])}${chip(COLORI_LIVELLO[1])}</span> più traffico o più lento</span>`,
+              `<span class="voce" title="${soglia}">${chip(COLORI_LIVELLO[0])} invariato</span>`,
+              `<span class="voce"><span class="scala">${chip(COLORI_LIVELLO[-1])}${chip(COLORI_LIVELLO[-2])}</span> meno traffico o più veloce</span>`);
+  } else {
+    voci.push(simbolo("", COLORI.rete, "rete (spessore = corsie)"));
+  }
+  voci.push(simbolo("alone", COLORI.evidenza, "via cercata"), simbolo("punto", COLORI.incrocio, "incrocio"),
+            simbolo("tratteggio", COLORI.chiusura, "chiusura"), simbolo("", COLORI.velocita, "cambio di velocità"));
+  $("#legenda").innerHTML = voci.join("");
+}
+
+// ---------- selezione di una via con il clic ----------
+mappa.on("popupclose", (e) => {
+  if (e.popup === stato.popup) { livelli.selezione.clearLayers(); stato.popup = null; }
+});
+
+function evidenziaSelezione(ids) {
+  livelli.selezione.clearLayers();
+  for (const id of ids) alone(id, COLORI.selezione, livelli.selezione, 5, 0.7);
+  riordina();
+}
+
+async function selezionaVia(nome, id, latlng) {
+  const ids = (nome && stato.vie.get(nome)) || [id];
+  stato.popup = L.popup({maxWidth: 320, className: "popup-via"}).setLatLng(latlng)
+    .setContent(`<b>${esc(nome || "Arco senza nome")}</b><br><span class="tenue">caricamento…</span>`);
+  const popup = stato.popup;
+  popup.openOn(mappa);
+  evidenziaSelezione(ids);
+  if (!nome) { popup.setContent(htmlArco(id)); return; }
+  try {
+    const info = await chiama(`/api/via?nome=${encodeURIComponent(nome)}`);
+    popup.setContent(htmlVia(info, ids));
+  } catch (e) {
+    popup.setContent(`<b>${esc(nome)}</b><br>${esc(e.message)}`);
+  }
+}
+
+function centraVia(nome) {
+  const ids = stato.vie.get(nome) || [];
+  mappa.closePopup();
+  evidenziaSelezione(ids);
+  const limiti = limitiArchi(ids);
+  if (limiti.isValid()) inquadra(limiti);
+}
+
+function htmlArco(id) {
+  const p = stato.archi.get(id).p;
+  return `<b>Arco senza nome</b><br>id ${esc(id)}<br>${num(p.kmh, nf0)} km/h · ${p.corsie} corsie · ${num(p.lunghezza_m, nf0)} m`;
+}
+
+function htmlVia(info, ids) {
+  const riga = (k, v) => `<tr><th>${k}</th><td>${v}</td></tr>`;
+  let h = `<b>${esc(info.nome)}</b><table>` +
+    riga("Archi", info.archi) + riga("Lunghezza", `${num(info.lunghezza_totale_m, nf0)} m`) +
+    riga("Limiti", `${info.limiti_kmh.map((k) => num(k, nf0)).join(", ")} km/h`) +
+    riga("Corsie", info.corsie.join(", ")) + riga("Tipi OSM", esc(info.tipi_osm.map((t) => t.replace("highway.", "")).join(", ")));
+  if (stato.risultati && stato.modo !== "rete") {
+    let prima = 0, dopo = 0;
+    for (const id of ids) {
+      const r = stato.risultati.archi[id];
+      if (r) { const km = stato.archi.get(id).p.lunghezza_m / 1000; prima += r.veicoli[0] * km; dopo += r.veicoli[1] * km; }
+    }
+    h += riga("Traffico", `${num(prima, nf0)} → ${num(dopo, nf0)} veic·km ${pct(variazione(prima, dopo))}`);
+  }
+  return h + "</table>";
+}
+
+mappa.on("click", () => mappa.closePopup());
+
+// ---------- evidenziazioni temporanee dei turni ----------
+function pulisciEvidenze() {
+  livelli.evidenze.clearLayers();
+  livelli.marcatori.clearLayers();
+}
+
+function evidenzia(ev, argomenti) {
+  const {archi = [], nodi = []} = ev.evidenzia || {};
+  for (const id of archi) alone(id, COLORI.evidenza, livelli.evidenze, 9);
+  const limiti = limitiArchi(archi);
+  for (const n of nodi) {
+    const c = stato.nodi[n];
+    if (!c) continue;
+    const titolo = argomenti && argomenti.via ? `Incrocio ${esc(argomenti.via)} × ${esc(argomenti.trasversale)}` : "Incrocio";
+    L.circleMarker([c[1], c[0]], {renderer: tela, radius: 7, color: "#7c2d12", weight: 2,
+                                  fillColor: COLORI.incrocio, fillOpacity: 1})
+      .bindTooltip(titolo, {className: "tip"}).addTo(livelli.marcatori);
+    limiti.extend([c[1], c[0]]);
+  }
+  riordina();
+  mostraSeFuori(limiti);
+}
+
+// ---------- sovrapposizione dello scenario ----------
+function puntoMedio(ll) {
+  let totale = 0;
+  for (let i = 1; i < ll.length; i++) totale += ll[i - 1].distanceTo(ll[i]);
+  let resto = totale / 2;
+  for (let i = 1; i < ll.length; i++) {
+    const d = ll[i - 1].distanceTo(ll[i]);
+    if (d >= resto && d > 0) {
+      const f = resto / d;
+      return L.latLng(ll[i - 1].lat + (ll[i].lat - ll[i - 1].lat) * f, ll[i - 1].lng + (ll[i].lng - ll[i - 1].lng) * f);
+    }
+    resto -= d;
+  }
+  return ll[0];
+}
+
+function disegnaScenario() {
+  livelli.bordo.clearLayers();
+  livelli.scenario.clearLayers();
+  const d = stato.dettaglio;
+  if (!d) return;
+  for (const el of d.sovrapposizione) {
+    const chiusura = el.tipo === "chiusura_via";
+    const tratto = el.tra ? ` tra ${esc(el.tra[0])} e ${esc(el.tra[1])}` : "";
+    const testo = `<b>${esc(el.via)}</b>${tratto}<br>${esc(el.etichetta)}`;
+    for (const id of el.archi) {
+      const a = stato.archi.get(id);
+      if (!a) continue;
+      const w = peso(a.p.corsie) + 1.5;
+      const bordo = L.polyline(geometria(id), {renderer: tela, color: "#fff", weight: w + 3, opacity: 0.95, interactive: false});
+      const linea = L.polyline(geometria(id), {renderer: tela, color: chiusura ? COLORI.chiusura : COLORI.velocita,
+                                               weight: w, opacity: 1, dashArray: chiusura ? "7 5" : null})
+        .bindTooltip(testo, {sticky: true, className: "tip"})
+        .on("click", (e) => { L.DomEvent.stopPropagation(e); selezionaVia(a.p.nome, id, e.latlng); });
+      bordo.arco = linea.arco = id;
+      livelli.bordo.addLayer(bordo);
+      livelli.scenario.addLayer(linea);
+    }
+    if (!chiusura && el.archi.length) {
+      // etichetta "50 → 30 km/h" sull'arco più vicino al centro dell'intervento
+      const centro = limitiArchi(el.archi).getCenter();
+      let migliore = null, distanza = Infinity;
+      for (const id of el.archi) {
+        const a = stato.archi.get(id);
+        if (!a) continue;
+        const m = puntoMedio(a.ll), dist = m.distanceTo(centro);
+        if (dist < distanza) { migliore = m; distanza = dist; }
+      }
+      if (migliore) livelli.scenario.addLayer(L.tooltip({permanent: true, direction: "center", className: "etichetta-vel", interactive: false})
+        .setLatLng(migliore).setContent(esc(el.etichetta)));
+    }
+  }
+  riordina();
+}
+
+// ---------- riquadro dello scenario e dei risultati ----------
+function apriPannello(titolo) {
+  $("#pannello").hidden = false;
+  $("#pannello-titolo").textContent = titolo;
+}
+$("#pannello-riduci").addEventListener("click", () => {
+  const p = $("#pannello");
+  p.classList.toggle("ridotto");
+  $("#pannello-riduci").textContent = p.classList.contains("ridotto") ? "▸" : "▾";
+});
+
+function svuotaSimulazione() {
+  $("#blocco-sim").hidden = true;
+  $("#blocco-sim").open = true;
+  $("#sim-titolo").textContent = "Simulazione";
+  $("#fasi").innerHTML = "";
+  $("#avanzamento").hidden = true;
+  $("#errore-sim").hidden = true;
+  $("#avvisi-sim").innerHTML = "";
+  $("#indicatori").innerHTML = "";
+  $("#vie-variate").innerHTML = "";
+}
+
+function schedaScenario(d) {
+  const s = d.scenario;
+  const interventi = d.sovrapposizione.map((el) => {
+    const chiusura = el.tipo === "chiusura_via";
+    const tratto = el.tra ? ` tra ${esc(el.tra[0])} e ${esc(el.tra[1])}` : "";
+    return `<li><i class="segno ${chiusura ? "tratteggio" : ""}" style="--c:${chiusura ? COLORI.chiusura : COLORI.velocita}"></i>` +
+           `<span><b>${esc(el.via)}</b>${tratto}<br><span class="tenue">${esc(el.etichetta)} · ${el.archi.length} archi</span></span></li>`;
+  }).join("");
+  // stessi testi degli avvisi di simula.py: nel riquadro compaiono una volta sola
+  const avvisi = d.sovrapposizione.filter((el) => el.avviso).map((el) => el.avviso);
+  if (s.fascia_oraria) avvisi.push(`fascia oraria ${s.fascia_oraria.join("–")} ignorata in questa versione: l'intervento vale per tutta la simulazione`);
+  stato.avvisiScheda = new Set(avvisi);
+  let h =`<p class="descrizione">${esc(s.descrizione || "(senza descrizione)")}</p><ul class="interventi">${interventi}</ul>`;
+  if (avvisi.length) h += `<ul class="avvisi">${avvisi.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`;
+  if (d.errori && d.errori.length)
+    h += `<div class="errore-box"><b>Scenario non valido</b>: ${esc(d.errori.join("; "))}</div>`;
+  return h;
+}
+
+// Scenario attivo: sovrapposizione sulla mappa, scheda e, se esistono, risultati
+async function attivaScenario(id, dettaglio = null) {
+  const richiesta = ++stato.richiestaScenario;
+  $("#scelta-scenario").value = id || "";
+  stato.dettaglio = null;
+  stato.risultati = null;
+  stato.avvisiScheda = new Set();
+  disegnaScenario();
+  impostaModo("rete");
+  svuotaSimulazione();
+  $("#scheda-scenario").innerHTML = "";
+  if (!id) { $("#pannello").hidden = true; aggiornaControlli(); return; }
+  apriPannello(`Scenario ${id}`);
+  try {
+    const d = dettaglio || await chiama(`/api/scenari/${encodeURIComponent(id)}`);
+    if (richiesta !== stato.richiestaScenario) return;
+    stato.dettaglio = d;
+  } catch (e) {
+    if (richiesta !== stato.richiestaScenario) return;
+    $("#scheda-scenario").innerHTML = `<div class="errore-box"><b>Scenario non valido</b><br>${esc(e.message)}</div>`;
+    aggiornaControlli();
+    return;
+  }
+  $("#scheda-scenario").innerHTML = schedaScenario(stato.dettaglio);
+  disegnaScenario();
+  mostraSeFuori(limitiArchi(stato.dettaglio.sovrapposizione.flatMap((el) => el.archi)));
+  aggiornaControlli();
+  if (stato.simulazione && stato.simulazione.id === id) {       // simulazione in corso: ne ripropone gli eventi
+    for (const ev of stato.simulazione.eventi) eventoSimulazione(ev, id);
+    return;
+  }
+  try {
+    const r = await chiama(`/api/scenari/${encodeURIComponent(id)}/risultati`);
+    if (richiesta === stato.richiestaScenario) mostraRisultati(r);
+  } catch (e) {
+    if (e.status !== 404 && richiesta === stato.richiestaScenario) mostraErroreSim("Risultati non leggibili", e.message);
+  }
+}
+
+async function aggiornaElencoScenari() {
+  let elenco;
+  try { elenco = await chiama("/api/scenari"); } catch { return; }
+  const sel = $("#scelta-scenario"), attuale = sel.value;
+  sel.innerHTML = '<option value="">— nessuno scenario —</option>' + elenco.map((s) =>
+    `<option value="${esc(s.id)}">${s.simulato ? "✓ " : ""}${esc(s.id)} · ${esc(riassunto(s.descrizione, 70))}</option>`).join("");
+  sel.value = attuale;
+}
+
+$("#scelta-scenario").addEventListener("change", (e) => attivaScenario(e.target.value));
+$("#modo-prima").addEventListener("click", () => impostaModo("prima"));
+$("#modo-dopo").addEventListener("click", () => impostaModo("dopo"));
+
+const INDICATORI = [   // [chiave, nome, formato, verso: +1 se aumentare è un miglioramento]
+  ["viaggi_completati", "Viaggi completati", (x) => num(x, nf0), 1],
+  ["durata_media_s", "Durata media (min:s)", minSec, -1],
+  ["tempo_perso_medio_s", "Tempo perso medio (min:s)", minSec, -1],
+  ["teletrasporti", "Teletrasporti", (x) => num(x, nf0), -1],
+];
+
+function mostraRisultati(r) {
+  stato.risultati = r;
+  impostaModo("dopo");
+  $("#avanzamento").hidden = true;
+  $("#avvisi-sim").innerHTML = r.avvisi.filter((a) => !stato.avvisiScheda.has(a)).map((a) => `<li>${esc(a)}</li>`).join("");
+  const righe = INDICATORI.map(([k, nome, fmt, verso]) => {
+    const g = r.globali[k], v = g.variazione_pct;
+    const classe = v == null || Math.abs(v) < 0.5 ? "" : v * verso > 0 ? "meglio" : "peggio";
+    return `<tr><th>${nome}</th><td>${fmt(g.prima)}</td><td>${fmt(g.dopo)}</td><td class="${classe}">${pct(v)}</td></tr>`;
+  }).join("");
+  const sc = r.scartati;
+  $("#indicatori").innerHTML = `<h3>Indicatori globali</h3><table class="indicatori"><thead><tr><th></th><th>Prima</th><th>Dopo</th><th>Var.</th></tr></thead>` +
+    `<tbody>${righe}</tbody></table>` +
+    (sc && sc.totale ? `<p class="nota">Viaggi scartati nello scenario: ${sc.totale} (${sc.archi_chiusi} partono o arrivano su archi chiusi, ${sc.senza_percorso} senza percorso).</p>` : "") +
+    `<p class="nota">Simulato il ${esc(new Date(r.calcolato).toLocaleString("it-IT", {dateStyle: "short", timeStyle: "short"}))}.</p>`;
+  $("#vie-variate").innerHTML = `<h3>Vie con la variazione maggiore (veicoli·km)</h3><ol class="top-vie">` + r.vie.map((v) => {
+    const delta = v.veicoli_km[1] - v.veicoli_km[0];
+    const classe = delta > 0 ? "peggio" : delta < 0 ? "meglio" : "";
+    return `<li><button type="button" data-via="${esc(v.via)}" title="${num(v.veicoli_km[0], nf0)} → ${num(v.veicoli_km[1], nf0)} veic·km; tempo perso ${num(v.perso_min[0], nf0)} → ${num(v.perso_min[1], nf0)} min">` +
+           `<span class="nome">${esc(v.via)}</span><span class="var ${classe}">${segno(delta)} ${pct(v.variazione_pct) ? `(${pct(v.variazione_pct)})` : ""}</span></button></li>`;
+  }).join("") + "</ol>";
+  aggiornaControlli();
+}
+
+$("#vie-variate").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-via]");
+  if (b) centraVia(b.dataset.via);
+});
+
+// ---------- simulazione ----------
+function mostraErroreSim(titolo, messaggio, log) {
+  const box = $("#errore-sim");
+  box.hidden = false;
+  box.innerHTML = `<b>${esc(titolo)}</b><br>${esc(messaggio)}` + (log ? `<pre>${esc(log)}</pre>` : "");
+}
+
+function chiudiFase(ok, t) {
+  const li = $("#fasi li.in-corso");
+  if (!li) return;
+  li.className = ok ? "fatta" : "fallita";
+  if (t != null) li.querySelector(".dur").textContent = durata(t - Number(li.dataset.t));
+}
+
+function eventoSimulazione(ev, id) {
+  if (!stato.dettaglio || stato.dettaglio.scenario.id !== id) return;   // un altro scenario è attivo
+  $("#blocco-sim").hidden = false;
+  if (ev.tipo === "fase") {
+    chiudiFase(true, ev.t);
+    const li = document.createElement("li");
+    li.className = "in-corso";
+    li.dataset.t = ev.t;
+    li.innerHTML = `<span>${esc(ev.messaggio)}</span><span class="dur"></span>`;
+    $("#fasi").append(li);
+    $("#avanzamento").hidden = true;
+  } else if (ev.tipo === "avanzamento") {
+    $("#avanzamento").hidden = false;
+    $("#barra-piena").style.width = `${Math.min(100, ev.frazione * 100)}%`;
+    $("#avanz-testo").textContent = ev.messaggio;
+  } else if (ev.tipo === "avviso") {
+    if (!stato.avvisiScheda.has(ev.messaggio)) $("#avvisi-sim").insertAdjacentHTML("beforeend", `<li>${esc(ev.messaggio)}</li>`);
+  } else if (ev.tipo === "errore") {
+    chiudiFase(false, ev.t);
+    $("#avanzamento").hidden = true;
+    mostraErroreSim("Simulazione fallita", ev.messaggio, ev.log);
+  } else if (ev.tipo === "fine") {
+    chiudiFase(true, ev.t);
+    $("#blocco-sim").open = false;                            // le fasi restano consultabili con un clic
+    $("#sim-titolo").textContent = `Simulazione completata in ${durata(ev.t)} ✓`;
+    chiama(`/api/scenari/${encodeURIComponent(id)}/risultati`)
+      .then((r) => { if (stato.dettaglio && stato.dettaglio.scenario.id === id) mostraRisultati(r); })
+      .catch((e) => mostraErroreSim("Risultati non leggibili", e.message));
+  }
+}
+
+function seguiSimulazione(lavoro, id) {
+  const sim = {id, eventi: [], es: new EventSource(`/api/lavori/${lavoro}/eventi`)};
+  stato.simulazione = sim;
+  aggiornaControlli();
+  const termina = () => {
+    sim.es.close();
+    if (stato.simulazione === sim) stato.simulazione = null;
+    aggiornaControlli();
+    aggiornaElencoScenari();
+  };
+  sim.es.onmessage = (m) => { const ev = JSON.parse(m.data); sim.eventi.push(ev); eventoSimulazione(ev, id); };
+  sim.es.addEventListener("chiuso", termina);
+  sim.es.onerror = () => {
+    if (sim.es.readyState !== EventSource.CLOSED) return;      // EventSource riprova da solo
+    termina();
+    if (stato.dettaglio && stato.dettaglio.scenario.id === id) mostraErroreSim("Connessione persa", "non arrivano più aggiornamenti sulla simulazione dal server");
+  };
+}
+
+$("#simula").addEventListener("click", async () => {
+  if (!stato.dettaglio || stato.simulazione) return;
+  const id = stato.dettaglio.scenario.id;
+  stato.risultati = null;
+  impostaModo("rete");
+  svuotaSimulazione();
+  $("#blocco-sim").hidden = false;
+  try {
+    const r = await postJSON(`/api/scenari/${encodeURIComponent(id)}/simula`, {});
+    seguiSimulazione(r.lavoro, id);
+  } catch (e) {
+    mostraErroreSim("Simulazione non avviata", e.message);
+    aggiornaControlli();
+  }
+});
+
+// ---------- chat e traccia dell'agente ----------
+function aggiungiMessaggio(classe, html) {
+  const div = document.createElement("div");
+  div.className = `msg ${classe}`;
+  div.innerHTML = html;
+  const box = $("#messaggi");
+  box.append(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+function benvenuto() {
+  const esempi = ["chiudi via Cernaia", "chiudi via Cernaia tra corso Palestro e corso Vinzaglio alle auto private",
+                  "limite di 30 km/h in corso Vinzaglio"];
+  const div = document.createElement("div");
+  div.className = "benvenuto";
+  div.innerHTML = "Descrivi uno scenario what-if in italiano. Per esempio:" +
+    esempi.map((t) => `<button type="button">${esc(t)}</button>`).join("");
+  div.addEventListener("click", (e) => {
+    if (e.target.tagName === "BUTTON") { $("#testo").value = e.target.textContent; $("#testo").focus(); }
+  });
+  $("#messaggi").append(div);
+}
+
+const ICONE = {inizio_turno: "▶", chiamata_modello: "◆", testo_modello: "❝", chiamata_tool: "⚙",
+               risultato_tool: "↳", scenario_creato: "★", errore: "!", fine_turno: "■"};
+
+function argomentiCompatti(a) {
+  if (a == null || typeof a !== "object") return String(a ?? "");
+  return Object.entries(a).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(", ");
+}
+
+function sintesiRisultato(ev) {
+  const r = ev.risultato || {};
+  if (r.errore) return {testo: `errore: ${r.errore}`, ko: true};
+  switch (ev.nome) {
+    case "cerca_via":
+      return r.esatte && r.esatte.length ? {testo: `esatte: ${r.esatte.join(", ")}`}
+        : {testo: `nessuna corrispondenza esatta${r.suggerimenti && r.suggerimenti.length ? `; suggerimenti: ${r.suggerimenti.join(", ")}` : ""}`};
+    case "incroci_tra":
+      return {testo: `${r.incroci} ${r.incroci === 1 ? "incrocio" : "incroci"}`};
+    case "info_via":
+      return {testo: `${r.archi} archi, ${num(r.lunghezza_totale_m, nf0)} m, limiti ${(r.limiti_kmh || []).join("/")} km/h, corsie ${(r.corsie || []).join("/")}`};
+    case "crea_scenario":
+      return r.ok ? {testo: `scenario ${r.id} salvato`} : {testo: `scenario non valido: ${(r.errori || []).join("; ")}`, ko: true};
+  }
+  return {testo: riassunto(JSON.stringify(r), 100)};
+}
+
+function descriviEvento(ev) {
+  const json = (x) => JSON.stringify(x, null, 2);
+  switch (ev.tipo) {
+    case "inizio_turno": return {titolo: "Inizio turno"};
+    case "chiamata_modello":
+      return {titolo: "Chiamata al modello" + (ev.token_ingresso != null ? ` <span class="tenue">· ${ev.token_ingresso} token in, ${ev.token_uscita} out</span>` : ""), dur: ev.durata};
+    case "testo_modello": return {titolo: esc(riassunto(ev.testo)), dettagli: ev.testo};
+    case "chiamata_tool": return {titolo: `<b>${esc(ev.nome)}</b>(${esc(riassunto(argomentiCompatti(ev.argomenti), 140))})`, dettagli: json(ev.argomenti)};
+    case "risultato_tool": {
+      const s = sintesiRisultato(ev);
+      const n = ev.evidenzia || {};
+      const mappaTesto = [n.archi && n.archi.length ? `${n.archi.length} archi` : "", n.nodi && n.nodi.length ? `${n.nodi.length} nodi` : ""].filter(Boolean).join(", ");
+      return {titolo: `<b>${esc(ev.nome)}</b> → ${esc(s.testo)}${mappaTesto ? ` <span class="tenue">· sulla mappa: ${mappaTesto}</span>` : ""}`,
+              ko: s.ko, dettagli: json({risultato: ev.risultato, evidenzia: ev.evidenzia}), dur: ev.durata};
+    }
+    case "scenario_creato":
+      return {titolo: `Scenario <b>${esc(ev.scenario.id)}</b>: ${esc(ev.scenario.descrizione)}`, dettagli: json(ev.scenario)};
+    case "errore": return {titolo: esc(ev.messaggio), ko: true};
+    case "fine_turno": return {titolo: "Fine turno", dur: ev.durata};
+  }
+  return {titolo: esc(ev.tipo), dettagli: json(ev)};
+}
+
+function aggiungiRigaTraccia(ev) {
+  const d = descriviEvento(ev);
+  const riga = document.createElement("div");
+  riga.className = `riga ${ev.tipo}${d.ko ? " ko" : ""}`;
+  const testa = `<span class="icona">${ICONE[ev.tipo] || "•"}</span><span class="titolo">${d.titolo}</span><span class="t">${durata(d.dur)}</span>`;
+  riga.innerHTML = d.dettagli != null
+    ? `<details><summary>${testa}</summary><pre>${esc(d.dettagli)}</pre></details>`
+    : `<div class="testa">${testa}</div>`;
+  const box = $("#righe"), inFondo = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  box.insertBefore(riga, $("#attesa"));
+  if (inFondo) box.scrollTop = box.scrollHeight;
+}
+
+// riga "in attesa…" in fondo alla traccia, con il tempo trascorso dall'ultimo evento
+setInterval(() => {
+  const t = stato.turno;
+  $("#attesa").hidden = !t;
+  if (!t) return;
+  const cosa = !t.lavoro ? "invio della richiesta" : t.ultimoTipo === "chiamata_tool" ? `esecuzione di ${t.nomeTool}` : "in attesa del modello";
+  $("#attesa-testo").textContent = `${cosa}… ${nf1.format((performance.now() - t.ultimo) / 1000)} s`;
+}, 100);
+
+function eventoAgente(ev) {
+  const t = stato.turno;
+  if (!t) return;
+  aggiungiRigaTraccia(ev);
+  t.ultimo = performance.now();
+  t.ultimoTipo = ev.tipo;
+  switch (ev.tipo) {
+    case "inizio_turno":
+      pulisciEvidenze();
+      break;
+    case "chiamata_tool":
+      t.argomenti = ev.argomenti;
+      t.nomeTool = ev.nome;
+      break;
+    case "risultato_tool":
+      if (ev.nome !== "crea_scenario") evidenzia(ev, t.argomenti);       // lo scenario arriva con scenario_creato
+      else if (ev.risultato && ev.risultato.ok === false)
+        aggiungiMessaggio("nota", `crea_scenario: scenario non valido — ${esc((ev.risultato.errori || []).join("; "))}`);
+      break;
+    case "scenario_creato":
+      aggiornaElencoScenari().then(() => attivaScenario(ev.scenario.id,
+        {scenario: ev.scenario, sovrapposizione: ev.sovrapposizione, errori: []}));
+      break;
+    case "errore":
+      t.errore = true;
+      t.bolla.className = "msg errore";
+      t.bolla.textContent = ev.messaggio;
+      if (/llama-server/.test(ev.messaggio)) controllaStato();
+      break;
+    case "fine_turno":
+      if (!t.errore) {
+        t.bolla.className = "msg agente";
+        t.bolla.innerHTML = formatta(ev.risposta || "(nessuna risposta)");
+      }
+      break;
+  }
+}
+
+function fineTurno() {
+  const t = stato.turno;
+  if (!t) return;
+  if (t.es) t.es.close();
+  if (t.bolla.classList.contains("attesa")) {        // il flusso si è chiuso senza fine_turno
+    t.bolla.className = "msg errore";
+    t.bolla.textContent = "Il turno si è interrotto senza risposta: riprova.";
+  }
+  stato.turno = null;
+  aggiornaControlli();
+}
+
+async function inviaRichiesta() {
+  const testo = $("#testo").value.trim();
+  if (!testo || stato.turno) return;
+  $("#testo").value = "";
+  aggiungiMessaggio("utente", esc(testo));
+  const t = {bolla: aggiungiMessaggio("agente attesa", ""), ultimo: performance.now(), ultimoTipo: null,
+             argomenti: null, nomeTool: null, errore: false, lavoro: null, es: null};
+  stato.turno = t;
+  aggiornaControlli();
+  try {
+    t.lavoro = (await postJSON("/api/chat", {conversazione: stato.conversazione, testo})).lavoro;
+  } catch (e) {
+    t.bolla.className = "msg errore";
+    t.bolla.textContent = e.message;
+    stato.turno = null;
+    aggiornaControlli();
+    return;
+  }
+  t.ultimo = performance.now();
+  t.es = new EventSource(`/api/lavori/${t.lavoro}/eventi`);
+  t.es.onmessage = (m) => eventoAgente(JSON.parse(m.data));
+  t.es.addEventListener("chiuso", fineTurno);
+  t.es.onerror = () => { if (t.es.readyState === EventSource.CLOSED) fineTurno(); };
+}
+
+$("#modulo").addEventListener("submit", (e) => { e.preventDefault(); inviaRichiesta(); });
+$("#testo").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); inviaRichiesta(); }
+});
+
+$("#nuova").addEventListener("click", () => {
+  if (stato.turno) return;
+  chiama(`/api/chat/${encodeURIComponent(stato.conversazione)}`, {method: "DELETE"}).catch(() => {});
+  stato.conversazione = nuovoId();
+  for (const el of [...$("#messaggi").children]) if (el.id !== "avviso-llm") el.remove();
+  for (const el of [...$("#righe").children]) if (el.id !== "attesa") el.remove();
+  benvenuto();
+  pulisciEvidenze();
+  mappa.closePopup();
+  livelli.selezione.clearLayers();
+  $("#testo").focus();
+});
+
+function aggiornaControlli() {
+  const d = stato.dettaglio;
+  $("#simula").disabled = !d || (d.errori && d.errori.length > 0) || !!stato.simulazione;
+  $("#simula").textContent = stato.simulazione ? "Simulazione in corso…" : "Simula";
+  $("#modo-prima").disabled = $("#modo-dopo").disabled = !stato.risultati;
+  $("#invia").disabled = !!stato.turno;
+  $("#nuova").disabled = !!stato.turno;
+}
+
+// ---------- stato di llama-server ----------
+function mostraStatoLlm(ok, messaggio) {
+  const el = $("#stato-llm");
+  el.className = `stato ${ok ? "ok" : "ko"}`;
+  el.textContent = ok ? "modello pronto" : "modello non raggiungibile";
+  el.title = messaggio || "";
+  $("#avviso-llm").hidden = ok;
+  $("#avviso-llm").textContent = ok ? "" : `${messaggio}. Avvia llama-server (vedi README) e riprova.`;
+}
+
+async function controllaStato() {
+  try { const s = await chiama("/api/stato"); mostraStatoLlm(s.llm, s.messaggio); }
+  catch (e) { mostraStatoLlm(false, e.message); }
+}
+
+// ---------- avvio ----------
+(async function avvio() {
+  benvenuto();
+  aggiornaLegenda();
+  aggiornaControlli();
+  controllaStato();
+  setInterval(controllaStato, 15000);
+  try {
+    await caricaRete();
+  } catch (e) {
+    aggiungiMessaggio("errore", `Impossibile caricare la rete: ${esc(e.message)}`);
+  }
+  await aggiornaElencoScenari();
+  try {
+    const s = await chiama("/api/simulazione");
+    if (s.lavoro) { seguiSimulazione(s.lavoro, s.scenario); await attivaScenario(s.scenario); }
+  } catch {}
+})();
+</script>
+</body>
+</html>
