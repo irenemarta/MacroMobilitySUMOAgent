@@ -9,6 +9,7 @@ dependencies = [
     "colorama>=0.4.6",
     "contextily>=1.7.0",
     "dotenv>=0.9.9",
+    "eclipse-sumo==1.28.*",
     "geopandas>=1.1.2",
     "geopy>=2.4.1",
     "ipykernel>=7.1.0",
@@ -23,7 +24,7 @@ dependencies = [
     "seaborn>=0.13.2",
     "shapely>=2.1.2",
     "sqlalchemy>=2.0.46",
-    "sumolib>=1.25.0",
+    "sumolib==1.28.*",
     "tqdm>=4.70.1",
 ]
 

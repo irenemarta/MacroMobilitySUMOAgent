@@ -94,6 +94,7 @@ def run_scenario(
     if check_only:
         return {"id": scenario["id"], **resolved_scen, "disturbances": dist}
 
+    sumo_version = subprocess.run(["sumo", "--version"], capture_output=True, text=True).stdout.splitlines()[0]
     sid = scenario["id"]
     run_label = f"{variant}_{sid}_seed{cfg.SEED}"
     work_dir = (
@@ -143,6 +144,7 @@ def run_scenario(
         "scale": scale,
         **resolved_scen,
         "disturbances": dist,
+        "sumo_version": sumo_version,
     }
     _save_json_info_(info, work_dir)
 
@@ -211,7 +213,7 @@ def run_scenario(
     (work_dir / "scenario_resolved.json").write_text(
         json.dumps(info, ensure_ascii=False, indent=2)
     )
-    return {"id": run_label, "det_dir": str(det_out.resolve()), "disturbances": dist}
+    return {"id": run_label, "det_dir": str(det_out.resolve()), "disturbances": dist, "sumo_version": sumo_version}
 
 
 def record(entries: list, path: Path = SCENARIOS_YAML) -> None:

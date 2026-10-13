@@ -29,9 +29,14 @@ CONTROLLED_TLS = {
 # override via DTSUMO_BASE_PATH in .env (see .env.example) for machine specific paths.
 
 BASE_PATH = Path(os.getenv("DTSUMO_BASE_PATH", "/mnt/external1/irene/dtSumo"))
-SCRIPTS_ROOT = BASE_PATH / "scripts"
 DATA_PATH = BASE_PATH / "data"
-OUTPUT_BASE = SCRIPTS_ROOT / "output"
+RAW = DATA_PATH / "raw"
+DERIVED = DATA_PATH / "derived"
+
+# one folder per experiment: DTSUMO_RUN=sumo-1.2x -> output/sumo-1.2x
+RUN = os.getenv("DTSUMO_RUN", "main")
+OUTPUT_BASE = BASE_PATH / "output" / RUN
+
 OUTPUT_DASHBOARDS = OUTPUT_BASE / "dashboards"
 SENS_DATA_FOLDER = DATA_PATH / "sensors"
 SENS_LANE_LOOKUP = DATA_PATH / "sens_lanes_match.csv"
@@ -39,15 +44,15 @@ SENS_LANE_LOOKUP = DATA_PATH / "sens_lanes_match.csv"
 # Graphic outputs
 IMAGES = OUTPUT_BASE / "img"
 IMAGES_MESO_VALIDATION = IMAGES / "meso_validation"
-VIEW = SCRIPTS_ROOT / "views/vehicles.view.xml"
+VIEW = BASE_PATH / "views/vehicles.view.xml"
 
 # Inputs
-NET_FILE = DATA_PATH / "raw/francia_peschiera_passenger.net.xml"
-NET_RESTRICTED = DATA_PATH / "raw/map_restricted.net.xml"
-ZONES = DATA_PATH / "raw" / "TOC_modello_Visum_CsoFrancia/SHP Zone/ZoneSVR_CsoFrancia.shp"
-CONNECTORS = DATA_PATH / "raw" / "TOC_modello_Visum_CsoFrancia/Domanda/IFER v03/NewConnectors_v03_connector.SHP"
-OD_DOMANDA = DATA_PATH / "raw" / "TOC_modello_Visum_CsoFrancia/Domanda"
-VTYPE = DATA_PATH / "raw" / "VType.add.xml"
+NET_FILE = RAW / "francia_peschiera_passenger.net.xml"
+NET_RESTRICTED = RAW / "map_restricted.net.xml"
+ZONES = RAW / "TOC_modello_Visum_CsoFrancia/SHP Zone/ZoneSVR_CsoFrancia.shp"
+CONNECTORS = RAW / "TOC_modello_Visum_CsoFrancia/Domanda/IFER v03/NewConnectors_v03_connector.SHP"
+OD_DOMANDA = RAW / "TOC_modello_Visum_CsoFrancia/Domanda"
+VTYPE = RAW / "VType.add.xml"
 
 # Time logics
 PERIODS = {
@@ -74,18 +79,20 @@ OUTPUT_DIR_ADD = OUTPUT_BASE / "additionals"
 OUTPUT_DIR_PARSING = OUTPUT_BASE / "parsed"
 DUA_WORKDIR = OUTPUT_BASE / "dua-workdir-3"
 MAROUTER_WORKDIR = OUTPUT_BASE / "marouter-workdir"
-OUTPUT_DIR_TLS = OUTPUT_DIR_ADD / "tls"
 
 # Generated files
-TAZ = OUTPUT_DIR_ADD     / "francia_peschiera_TAZ.taz.xml"
+TAZ = DERIVED / "taz" / "francia_peschiera_TAZ.taz.xml"
+OUTPUT_DIR_PARSING = DERIVED / "parsed"
 EDG_PARSE_XML = OUTPUT_DIR_PARSING / "francia_peschiera.edg.xml"
 NOD_PARSE_XML = OUTPUT_DIR_PARSING / "francia_peschiera.nod.xml"
+TAZREL = {period: DERIVED / "taz" / f"taz-rel/{period}/francia_peschiera.TAZREL.add.xml" for period in PERIODS}
 
 ## TLS
 OUTPUT_DIR_TLS = OUTPUT_DIR_ADD / "tls"
 
 ## OD matrices
 OD_MATRICES = {period: OD_DOMANDA / info["mtx"] for period, info in PERIODS.items()}
+OD_MATRICES["DAY"] = DERIVED / "od" / "DAY"
 
 ## Routes
 OD_TRIPS_DIR = {period: ROUTES_DIR / f"OD_{info['label']}" for period, info in PERIODS.items()}
@@ -101,9 +108,6 @@ OUTPUT_DIR_COMPARISON = OUTPUT_DASHBOARDS / "comparison"
 OUTPUT_DIR_DUAITERATE = OUTPUT_DASHBOARDS / "duaiterate"
 OUTPUT_DIR_DUAROUTER  = OUTPUT_DASHBOARDS / "duarouter"
 OUTPUT_DAY_PROFILE = OUTPUT_DASHBOARDS / "out-DataExtr-OD-allDay"
-
-## TAZ relations -> TAZREL['AM']
-TAZREL = {period: OUTPUT_DIR_ADD / f"taz-rel/{period}/francia_peschiera.TAZREL.add.xml" for period in PERIODS}
 
 ## Detectors -> DETECTORS['LOGIT']['AM']
 DETECTORS = {
