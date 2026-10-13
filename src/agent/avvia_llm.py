@@ -3,7 +3,7 @@ import argparse
 import os
 import shlex
 
-from configurazione import CONFIG, FILE_CONFIG, ErroreConfigurazione
+from agent.configurazione import CONFIG, FILE_CONFIG, ErroreConfigurazione
 
 
 def comando_server(config=CONFIG):

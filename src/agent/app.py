@@ -21,15 +21,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
-import agente
-import simula
-from configurazione import CARTELLA_PROGETTO
-from risolvi import risolvi_scenario, sovrapposizione
+import agent.agente as agente
+import agent.simula as simula
+from agent.configurazione import CARTELLA_PROGETTO
 
 DB = agente.DB
 if not DB.execute("SELECT name FROM sqlite_master WHERE name = 'nodi'").fetchone():
     raise RuntimeError(f"{agente.PERCORSO_DB} non ha la tabella nodi: rigeneralo con "
-                       "python indice_rete.py costruisci")
+                    "python indice_rete.py costruisci")
 
 app = FastAPI(title="Agente what-if SUMO")
 ID_VALIDO = re.compile(r"[\w-]+")
@@ -208,8 +207,11 @@ def elenco_scenari():
 def dettaglio_scenario(ident: str):
     scenario = leggi_scenario(ident)
     try:
-        return {"scenario": scenario, "sovrapposizione": sovrapposizione(DB, scenario),
-                "errori": simula.controlla(scenario, risolvi_scenario(DB, scenario))}
+        # archi risolti da dtSumo quando l'agente ha creato lo scenario (scenari/controlli/<id>.json)
+        return {"scenario": scenario, "sovrapposizione": agente.sovrapposizione(scenario), "errori": []}
+    except FileNotFoundError:
+        return {"scenario": scenario, "sovrapposizione": [],
+                "errori": ["scenario non verificato da dtSumo: crealo con l'agente, la simulazione lo verifica comunque"]}
     except (AttributeError, TypeError, ValueError, KeyError) as e:
         raise HTTPException(422, f"scenario {ident} non valido: {type(e).__name__}: {e}")
 
@@ -224,17 +226,22 @@ def risultati(ident: str):
     return FileResponse(percorso, media_type="application/json")
 
 
-SIMULAZIONE = {"lavoro": None, "scenario": None}      # una alla volta: sumo usa la CPU e la cache
+SIMULAZIONE = {"lavoro": None, "scenario": None}      # la GUI ne segue una alla volta; l'agente può lanciarne altre
 
 
 @app.post("/api/scenari/{ident}/simula")
-def avvia_simulazione(ident: str):
+def avvia_simulazione(ident: str, modalita: str=simula.MODALITA_PREDEFINITA):
+    if modalita not in simula.MODALITA:
+        raise HTTPException(400, f"modalità '{modalita}' sconosciuta: usa {' o '.join(simula.MODALITA)}")
     scenario = leggi_scenario(ident)
     with BLOCCO:
         corrente = SIMULAZIONE["lavoro"]
         if corrente and not corrente.finito:
             raise HTTPException(409, f"è già in corso la simulazione dello scenario {SIMULAZIONE['scenario']}")
-        SIMULAZIONE.update(lavoro=Lavoro(simula.simula(scenario, agente.PERCORSO_DB)), scenario=ident)
+        errore = simula.posto_libero(ident)            # anche quelle avviate dall'agente
+        if errore:
+            raise HTTPException(409, errore)
+        SIMULAZIONE.update(lavoro=Lavoro(simula.simula(scenario, agente.PERCORSO_DB, modalita)), scenario=ident)
         return {"lavoro": SIMULAZIONE["lavoro"].id, "scenario": ident}
 
 

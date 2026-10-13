@@ -18,7 +18,7 @@ import sqlite3
 import sys
 from collections import defaultdict
 
-from indice_rete import incroci
+from agent.indice_rete import incroci
 
 
 def archi_via(db, via):
