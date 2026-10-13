@@ -10,11 +10,20 @@ import sumolib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Optional, Set
-from scripts.src.whatif.scenario import ScenarioError, _assign_new_duration, which_lanes_to_close
+from scripts.src.whatif.scenario import (
+    ScenarioError,
+    _assign_new_duration,
+    which_lanes_to_close,
+)
 
 
 def build_scenario_net(
-    base_net: Path, net: "sumolib.net.Net", lanes_closed: Dict[str, int], out_dir: Path, new_speeds: Optional[Dict[str, float]] = None, tls_rules: Optional[List[dict]] = None,
+    base_net: Path,
+    net: "sumolib.net.Net",
+    lanes_closed: Dict[str, int],
+    out_dir: Path,
+    new_speeds: Optional[Dict[str, float]] = None,
+    tls_rules: Optional[List[dict]] = None,
 ) -> Path:
     """scenario.net.xml = base_net with disallow="all" on the closed lanes (lanes_closed: {edge: n lanes})
     + modified speed and tls."""
@@ -29,7 +38,9 @@ def build_scenario_net(
     # close the internal lanes of the movements from or to a closed lane
     connections = []
     for conn_el in root.iter("connection"):
-        if conn_el.get("via"):  # only connections that cross a junction have an internal lane
+        if conn_el.get(
+            "via"
+        ):  # only connections that cross a junction have an internal lane
             connections.append(conn_el)
     # a left turn can go through two internal lanes (internal junction)
     # from lane = lane index -> from + fromLane = edgeid_laneid
@@ -44,7 +55,7 @@ def build_scenario_net(
         if lane.get("id") in closed_lanes:
             lane.attrib.pop("allow", None)
             lane.set("disallow", "all")
-    # speed management 
+    # speed management
     for edge in root.iter("edge"):
         v_in_ms = (new_speeds or {}).get(edge.get("id"))
         if v_in_ms is not None:
@@ -52,27 +63,31 @@ def build_scenario_net(
                 lane.set("speed", f"{v_in_ms:.2f}")
     # tls management
     ## NB: STATIC LOGIC ONLY - no minDur/maxDur
-    applied_rules = {r['tls']: r for r in tls_rules or []}
+    applied_rules = {r["tls"]: r for r in tls_rules or []}
     connections_tl = [c for c in root.iter("connection") if c.get("tl")]
     for tl in root.iter("tlLogic"):
         rule = applied_rules.get(tl.get("id"))
         if rule is None:
             continue
-        if rule['action'] == "off":
+        if rule["action"] == "off":
             # SUMO switched off logic: 'O' = right of way, 'o' = yield
             for c in connections_tl:
                 tls_off = {}
                 if c.get("tl") == tl.get("id"):
                     tls_off[int(c.get("linkIndex"))] = c.get("state")
-                    num_links = len(tl.ginf("phase").get("state"))
+                    num_links = len(tl.find("phase").get("state"))
                     for phase in tl.findall("phase"):
                         tl.remove(phase)
                     state = "".join(tls_off.get(k, "o") for k in range(num_links))
-                    ET.SubElement(tl, "phase", {"duration": str(24*3600), "state": state})
+                    ET.SubElement(
+                        tl, "phase", {"duration": str(24 * 3600), "state": state}
+                    )
         for idx, phase in enumerate(tl.findall("phase")):  # green, cycle
-            new_dur = _assign_new_duration(float(phase.get('duration')))
-            phase.set("duration", f"{(new_dur, idx, rule):.1f}")
-    
+            new_dur = _assign_new_duration(
+                duration=float(phase.get("duration")), phase_idx=idx, int_rule=rule
+            )
+            phase.set("duration", f"{new_dur:.1f}")
+
     scenario_net = out_dir / "scenario.net.xml"
     tree.write(scenario_net, encoding="UTF-8", xml_declaration=True)
     return scenario_net

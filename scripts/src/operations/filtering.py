@@ -1,9 +1,9 @@
 import re
+from typing import List
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from tqdm import tqdm
 from colorama import init, Fore
-from collections import defaultdict
 
 init(autoreset=True)
 
@@ -140,8 +140,9 @@ def _hour_factor(origin: str, destination: str, hour: int, demand_rules: list) -
     Ex: +20% demand only from 8am to 9 am from TAZ x to TAZ y."""
     factor = 1.0
     for dr in demand_rules:
+        # overlap = earliest end - latest start
         overlap = min(dr["end"], (hour + 1) * 3600) - max(dr["begin"], hour * 3600)
-        if overlap:
+        if overlap <= 0:
             continue
         if dr["taz"]:
             zones = set(dr["taz"])
@@ -154,10 +155,16 @@ def _hour_factor(origin: str, destination: str, hour: int, demand_rules: list) -
             if not affected_trip:
                 continue
         factor *= 1 + (dr["factor"] - 1) * overlap / 3600
+        # TODO: spezzare matrici per evitare dispersione unifore del +10% su tutta l'ora per od2trips?
+        """
+        Ex: +20% from 7:30 to 9:00 am
+        7-7:30 does not change, +20% 7:30-8 --> 7:00-8:00 = +10%
+        f = 1 + (1.2 - 1) * 0.5 = 1.1
+        """
     return factor
 
 
-def scale_taz_trips_by_hour(od_files: list, demand_rules: list, output_dir: Path) -> Path:
+def scale_od_matrices(od_files: list, demand_rules: list, output_dir: Path) -> List[Path]:
     """
     What-if demand change on OD matrices.
     rules: [{"taz": [...] (empty = every zone), "direction": "from" | "to" | "both", "begin": s, "end": s, "factor": f}]
