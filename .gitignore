@@ -6,7 +6,10 @@ logs
 scenarios
 data
 scripts/output
-__pycache__
-scripts/src/operations/connections.py
+scripts/
+*__pycache__
+src/dtsumo/operations/connections.py
 TXT
-scripts/out_analysis
+notebooks/
+*.sh
+tests/
