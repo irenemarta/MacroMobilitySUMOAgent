@@ -16,9 +16,9 @@ from typing import Dict, List, Optional, Tuple
 import sumolib
 from colorama import Fore, init
 
-import src.dtsumo.inputs.config as cfg
-from src.dtsumo.operations.cmd import run_duarouter
-from src.dtsumo.operations.taz_zones import AssignmentContext, ResidentialCandidate
+import dtsumo.inputs.config as cfg
+from dtsumo.operations.cmd import run_duarouter
+from dtsumo.operations.taz_zones import AssignmentContext, ResidentialCandidate
 
 
 init(autoreset=True)

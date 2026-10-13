@@ -15,9 +15,9 @@ from xml.etree.ElementTree import indent  # file layout
 from pyproj import Transformer
 from pathlib import Path
 
-from src.dtsumo.helpers import format_xml
-import src.dtsumo.inputs.config as cfg
-from src.dtsumo.operations.cmd import random_routes
+from dtsumo.helpers import format_xml
+import dtsumo.inputs.config as cfg
+from dtsumo.operations.cmd import random_routes
 
 
 class XMLBuilder:

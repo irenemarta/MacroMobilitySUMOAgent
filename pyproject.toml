@@ -1,7 +1,7 @@
 [project]
-name = "project"
+name = "dtsumo"
 version = "0.1.0"
-description = "Add your description here"
+description = "Digital Twin for SUMO: Python package for traffic simulation and analysis using SUMO as validation tool. Useful to produce traffic scenarios and to evaluate the impact of road closures, traffic management strategies, and other interventions on traffic flow and congestion using the specific chatbot."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -32,6 +32,9 @@ dev = [
     "pytest>=9.1.1",
 ]
 
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.pytest.ini_options]
-pythonpath = ["."]
-testpaths = ["scripts/tests"]
+testpaths = ["tests"]

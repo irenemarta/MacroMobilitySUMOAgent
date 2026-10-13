@@ -10,7 +10,7 @@ from colorama import Fore, init
 
 import numpy as np
 import pandas as pd
-from src.dtsumo.operations.connections import _get_pasta_data
+from dtsumo.operations.connections import _get_pasta_data
 
 init(autoreset=True)
 AM_PEAK = 8

@@ -7,7 +7,7 @@ from shapely import Point, LineString
 from pathlib import Path
 
 from typing import Dict, Tuple
-import src.dtsumo.inputs.config as cfg
+import dtsumo.inputs.config as cfg
 import matplotlib.pyplot as plt
 
 
@@ -298,7 +298,7 @@ def main():
             sensor_lane_lookup = pd.read_csv(lookup_path)
             print("Sensor–lane lookup loaded from cache")
         else:
-            from src.dtsumo.operations.connections import _get_pasta_data
+            from dtsumo.operations.connections import _get_pasta_data
             from dotenv import load_dotenv
             load_dotenv()
             connection_strings = {

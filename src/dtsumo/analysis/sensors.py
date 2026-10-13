@@ -26,13 +26,13 @@ import contextily as cx
 import pandas as pd
 import pandera.pandas as pa
 
-from src.dtsumo.operations.connections import _get_pasta_data
-from src.dtsumo.modules.entities import (
+from dtsumo.operations.connections import _get_pasta_data
+from dtsumo.modules.entities import (
     DataFrameSchemaBridge,
     DataFrameSchemaPasta,
     DataFrameSchemaMerge,
 )
-import src.dtsumo.inputs.config as cfg
+import dtsumo.inputs.config as cfg
 
 sns.set_theme(style="whitegrid")
 DATE_FORMAT = "%Y-%m-%d"

@@ -13,9 +13,9 @@ from typing import Dict, List
 import sumolib
 from colorama import Fore, init
 
-import src.dtsumo.inputs.config as cfg
-from src.dtsumo.helpers import parse_edges
-from src.dtsumo.inputs.taz_from_OD import read_TAZ
+import dtsumo.inputs.config as cfg
+from dtsumo.helpers import parse_edges
+from dtsumo.inputs.taz_from_OD import read_TAZ
 from dtsumo.modules.entities import AssignmentContext, ResidentialCandidate
 
 init(autoreset=True)

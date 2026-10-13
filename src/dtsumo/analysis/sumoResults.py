@@ -11,7 +11,7 @@ import matplotlib.dates as mdates
 import xml.etree.ElementTree as ET
 
 from typing import List, TypedDict
-import src.dtsumo.inputs.config as cfg
+import dtsumo.inputs.config as cfg
 
 # TODO: ADD VEHICLE ROUTES + TRIP INFO ANALYS 
 

@@ -30,8 +30,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import networkx as nx
 
-import src.dtsumo.inputs.config as cfg
-from src.dtsumo.operations.taz_zones import _taz_edge_ids
+import dtsumo.inputs.config as cfg
+from dtsumo.operations.taz_zones import _taz_edge_ids
 
 CLOSURE_SEVERITY = 0.0  # all lanes closed
 INTERVENTION_TYPE = ["closure", "partial_closure", "speed", "demand", "tls"]

@@ -18,7 +18,7 @@ from shapely import LineString, Point, Polygon
 from pathlib import Path
 from colorama import Fore, init
 import matplotlib.pyplot as plt
-import src.dtsumo.inputs.config as cfg
+import dtsumo.inputs.config as cfg
 
 init(autoreset=True)
 BORDER_MAIN_STREETS = [

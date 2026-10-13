@@ -3,9 +3,9 @@ from pathlib import Path
 from colorama import init, Fore
 from typing import List
 
-from src.dtsumo.helpers import parse_edges, _process_multiple_ods
-from src.dtsumo.inputs import config as cfg
-from src.dtsumo.operations.filtering import filter_zero_flows
+from dtsumo.helpers import parse_edges, _process_multiple_ods
+from dtsumo.inputs import config as cfg
+from dtsumo.operations.filtering import filter_zero_flows
 
 init(autoreset=True)
 

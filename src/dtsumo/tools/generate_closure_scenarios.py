@@ -10,9 +10,9 @@ import click
 import sumolib
 from colorama import init, Fore
 
-import src.dtsumo.inputs.config as cfg
-from src.dtsumo.operations.marouter_cycle import DEFAULT_DAY_SCALE
-from src.dtsumo.inputs.dayODs import generate_hour_matrices
+import dtsumo.inputs.config as cfg
+from dtsumo.operations.marouter_cycle import DEFAULT_DAY_SCALE
+from dtsumo.inputs.dayODs import generate_hour_matrices
 from dtsumo.whatif.run import N_ROUNDS, SCENARIOS_YAML, record, run_scenario
 from dtsumo.whatif.scenario import ScenarioError, disturbances, load_scenario
 

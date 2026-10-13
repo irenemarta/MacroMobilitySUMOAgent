@@ -8,11 +8,11 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-import src.dtsumo.inputs.config as cfg
-from src.dtsumo.operations.cmd import run_marouter
-from src.dtsumo.inputs.dayODs import generate_hour_matrices
-from src.dtsumo.operations.filtering import filter_short_flows, filter_zero_prob
-from src.dtsumo.operations.taz_zones import _edge_taz_map
+import dtsumo.inputs.config as cfg
+from dtsumo.operations.cmd import run_marouter
+from dtsumo.inputs.dayODs import generate_hour_matrices
+from dtsumo.operations.filtering import filter_short_flows, filter_zero_prob
+from dtsumo.operations.taz_zones import _edge_taz_map
 from dtsumo.modules.entities import CfgAttributes, AssignmentContext
 from colorama import init, Fore
 

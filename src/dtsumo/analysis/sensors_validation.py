@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from src.dtsumo.analysis.sensors import DATE_FORMAT, pasta_db_merge, standardize_datetime
+from dtsumo.analysis.sensors import DATE_FORMAT, pasta_db_merge, standardize_datetime
 from dtsumo.modules.entities import DataFrameSchemaPasta
 
 GEH_OK = 5.0
@@ -474,7 +474,7 @@ def validate_all_sensors(
 
 def sensor_validation_cli(edgedata_path, edge_id, from_sensors, sensor_data_path, anagraphics_path, flows_path, out_dir):
     """Valida l'output MESO contro i dati reali dei sensori PASTA (statistica GEH)."""
-    import src.dtsumo.inputs.config as cfg
+    import dtsumo.inputs.config as cfg
     import pandera.errors
 
     if not edge_id and not from_sensors:

@@ -18,16 +18,16 @@ import click, sumolib, subprocess
 from pathlib import Path
 from colorama import Fore, init
 
-import src.dtsumo.inputs.config as cfg
+import dtsumo.inputs.config as cfg
 from dtsumo.tools.detectors import edges_as_lanes, generate_all_detectors
-from src.dtsumo.operations.filtering import scale_od_matrices
-from src.dtsumo.operations.marouter_cycle import (
+from dtsumo.operations.filtering import scale_od_matrices
+from dtsumo.operations.marouter_cycle import (
     DEFAULT_DAY_SCALE,
     build_sumocfg_day,
     run_assignement_cycle_day_iterative,
 )
-from src.dtsumo.operations.od_extension import extend_subset_trips
-from src.dtsumo.operations.taz_zones import (
+from dtsumo.operations.od_extension import extend_subset_trips
+from dtsumo.operations.taz_zones import (
     AssignmentContext,
     _edge_taz_map,
     residential_edge_taz,

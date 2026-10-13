@@ -304,7 +304,7 @@ def _read_multiple_ods(od_path: Path | list) -> Dict[Path, pd.DataFrame]:
     for p in paths:
         df = pd.read_csv(
             p,
-            sep="\s+",
+            sep=r"\s+",
             comment="*",
             names=["From", "To", "Flow"],
             skiprows=[0, 7],

@@ -18,8 +18,8 @@ from shapely.geometry import LineString
 from colorama import init, Fore
 from pathlib import Path
 
-import src.dtsumo.inputs.config as cfg
-from src.dtsumo.helpers import (
+import dtsumo.inputs.config as cfg
+from dtsumo.helpers import (
     parse_nodes,
     parse_edges,
     _filter_by_bbox,

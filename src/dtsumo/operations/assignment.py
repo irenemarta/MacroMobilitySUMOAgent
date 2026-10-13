@@ -14,15 +14,15 @@ import random
 import click
 from typing import List, Optional
 from colorama import init, Fore
-from src.dtsumo.operations.taz_zones import AssignmentContext, build_context
-from src.dtsumo.operations.marouter_cycle import (
+from dtsumo.operations.taz_zones import AssignmentContext, build_context
+from dtsumo.operations.marouter_cycle import (
     DEFAULT_DAY_SCALE,
     build_final_sumocfg,
     build_sumocfg_day,
     run_cycle_peaks,
     run_assignement_cycle_day_iterative,
 )
-from src.dtsumo.operations.od_extension import extend_subset_trips
+from dtsumo.operations.od_extension import extend_subset_trips
 
 init(autoreset=True)
 
