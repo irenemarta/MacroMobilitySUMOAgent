@@ -211,7 +211,7 @@ def incroci(db, via_a, via_b):
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args == ["costruisci"]:
-        from configurazione import CONFIG
+        from agent.configurazione import CONFIG
 
         CONFIG.indice.parent.mkdir(parents=True, exist_ok=True)
         costruisci(str(CONFIG.rete), str(CONFIG.indice))

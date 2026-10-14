@@ -238,10 +238,10 @@ def _simula(scenario, indice, modalita):
         avvia(scenario["id"], n_round)
         yield from attendi(scenario["id"], n_round)
 
-        # yield fase("Confronto con la baseline")
-        # risultati = confronta(db, confronto(scenario["id"], BASELINE["id"], n_round), scenario, avvisi)
-        # (cartella / "risultati.json").write_text(json.dumps(risultati, ensure_ascii=False), encoding="utf-8")
-        # yield {"tipo": "fine", "id": scenario["id"], "globali": risultati["globali"]}
+        yield fase("Confronto con la baseline")
+        risultati = confronta(db, confronto(scenario["id"], BASELINE["id"], n_round), scenario, avvisi)
+        (cartella / "risultati.json").write_text(json.dumps(risultati, ensure_ascii=False), encoding="utf-8")
+        yield {"tipo": "fine", "id": scenario["id"], "globali": risultati["globali"]}
     except (ErroreSimulazione, ErroreDtsumo) as e:
         yield {"tipo": "errore", "messaggio": str(e), "log": e.log}
     except Exception as e:

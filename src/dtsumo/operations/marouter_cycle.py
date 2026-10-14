@@ -275,6 +275,7 @@ def build_sumocfg_day(
         detectors=detectors_file,
         edgedata=edgedata_additional,
         vtype=cfg.VTYPE,
+        seed=cfg.SEED,
     )
     print(f"\t\t.sumocfg {scenario}/DAY output in: {routes_final}")
     return cfg.CFG_DIR / config_name
