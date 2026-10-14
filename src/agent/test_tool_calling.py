@@ -17,7 +17,7 @@ import time
 
 from openai import OpenAI
 
-from configurazione import CONFIG
+from agent.configurazione import CONFIG
 
 BASE_URL = sys.argv[1] if len(sys.argv) > 1 else CONFIG.llm_base_url
 client = OpenAI(base_url=BASE_URL, api_key="locale")

@@ -109,7 +109,7 @@ def sovrapposizione(db, scenario):
 
 
 if __name__ == "__main__":
-    from configurazione import CONFIG
+    from agent.configurazione import CONFIG
 
     if len(sys.argv) not in (2, 3):
         sys.exit(__doc__)

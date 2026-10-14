@@ -1,4 +1,0 @@
-openai
-sumolib
-fastapi
-uvicorn[standard]
