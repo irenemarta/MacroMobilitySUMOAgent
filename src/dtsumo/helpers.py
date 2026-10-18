@@ -391,3 +391,33 @@ def write_taz_relations_24h(
     ET.indent(tree, space="    ")
     tree.write(str(taz_relations_file), encoding="utf-8", xml_declaration=True)
     return taz_relations_file
+
+
+### TLS MANAGEMENT
+def ensure_tls_off_additional() -> Path:
+    """Ensure that the additional file for switched off tls groups exists and rebuil it when it is older than the net file or config.py"""
+    import dtsumo.inputs.config as cfg
+    import sumolib
+    path_tlsoff = Path(cfg.TLS_OFF_ADD)
+    if path_tlsoff.exists():
+        date_mod_tls = path_tlsoff.stat().st_mtime
+        date_mod_net = cfg.NET_FILE.stat().st_mtime
+        if date_mod_tls > date_mod_net and date_mod_tls > Path(cfg.__file__).stat().st_mtime:
+            return path_tlsoff
+    net = sumolib.net.readNet(str(cfg.NET_FILE), withPrograms=True)
+    all_programs_tll = {tls.getID() for tls in net.getTrafficLights()}
+    missing_tls_net = sorted(set(cfg.CONTROLLED_TLS) - all_programs_tll)
+    to_switch_off_tls = sorted(all_programs_tll - set(cfg.CONTROLLED_TLS))
+    if missing_tls_net:
+        raise ValueError(f"Missing real logic for TLS group: {missing_tls_net} in {cfg.NET_FILE}. Check CONTROLLED_TLS in config.py.")
+    
+    lines = ["<additional>"]
+    for tls_id in to_switch_off_tls:
+        lines.append(f'    <tlLogic id="{tls_id}" type="static" programID="off" offset="0"/>')
+    lines.append('</additional>')
+    path_tlsoff.parent.mkdir(parents=True, exist_ok=True)
+    temp = path_tlsoff.with_name(f"{path_tlsoff.name}.{os.getpid()}.tmp") # parallel runs (one temp per process)
+    temp.write_text("\n".join(lines) + "\n")
+    
+    os.replace(temp, path_tlsoff) # no process reads a half-written file
+    return path_tlsoff

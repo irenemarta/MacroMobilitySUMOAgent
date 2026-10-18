@@ -62,6 +62,8 @@ CONNECTORS = RAW / "TOC_modello_Visum_CsoFrancia/Domanda/IFER v03/NewConnectors_
 OD_DOMANDA = RAW / "TOC_modello_Visum_CsoFrancia/Domanda"
 VTYPE = RAW / "VType.add.xml"
 
+TLS_OFF_ADD = DERIVED / "tls" / "tls_not_real_off.add.xml"  # non-real traffic lights switched off
+
 # Time logics
 PERIODS = {
     "AM":  {"start": 28800, "end": 36000, "label": "Morning", "mtx": "IFER v03/201 TOTAL_MTX_08-09.mtx", "mtx_is_dir": False},

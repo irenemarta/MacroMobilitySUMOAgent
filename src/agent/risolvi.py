@@ -12,6 +12,7 @@ Prova:
     python risolvi.py scenari/<id>.json
     python risolvi.py /percorso/indice.sqlite scenari/<id>.json
 """
+
 import heapq
 import json
 import sqlite3
@@ -30,7 +31,8 @@ def grafo_via(db, via):
     """Grafo orientato degli archi della via: {nodo: [(arco, nodo_arrivo, lunghezza_m)]}."""
     grafo = defaultdict(list)
     for arco, da, a, lung in db.execute(
-            "SELECT id, da_nodo, a_nodo, lunghezza_m FROM archi WHERE nome = ?", (via,)):
+        "SELECT id, da_nodo, a_nodo, lunghezza_m FROM archi WHERE nome = ?", (via,)
+    ):
         grafo[da].append((arco, a, lung))
     return grafo
 
@@ -38,14 +40,16 @@ def grafo_via(db, via):
 def cammino_minimo(grafo, sorgenti, destinazioni):
     """Archi del cammino più breve da una sorgente a una destinazione diversa dalla sorgente
     (Dijkstra da ciascuna sorgente), oppure None se non esiste."""
-    migliore = None                                   # (lunghezza, archi)
+    migliore = None  # (lunghezza, archi)
     for s in sorgenti:
         dist, prec, coda = {s: 0.0}, {}, [(0.0, s)]
         while coda:
             d, n = heapq.heappop(coda)
             if d > dist[n]:
                 continue
-            if n != s and n in destinazioni:          # la prima destinazione estratta è la più vicina
+            if (
+                n != s and n in destinazioni
+            ):  # la prima destinazione estratta è la più vicina
                 if migliore is None or d < migliore[0]:
                     archi = []
                     while n != s:
@@ -70,16 +74,24 @@ def risolvi_intervento(db, intervento):
     if not tra:
         return {"archi": tutti, "avviso": None}
     if len(tra) != 2:
-        return {"archi": tutti, "avviso": f"tratto di {via} non valido ({tra}): uso la via intera"}
+        return {
+            "archi": tutti,
+            "avviso": f"tratto di {via} non valido ({tra}): uso la via intera",
+        }
     x, y = tra
     grafo = grafo_via(db, via)
     nodi_x, nodi_y = set(incroci(db, via, x)), set(incroci(db, via, y))
     andata = cammino_minimo(grafo, nodi_x, nodi_y)
     ritorno = cammino_minimo(grafo, nodi_y, nodi_x)
     if not andata and not ritorno:
-        return {"archi": tutti,
-                "avviso": f"nessun percorso lungo {via} tra {x} e {y}: uso la via intera"}
-    return {"archi": list(dict.fromkeys((andata or []) + (ritorno or []))), "avviso": None}
+        return {
+            "archi": tutti,
+            "avviso": f"nessun percorso lungo {via} tra {x} e {y}: uso la via intera",
+        }
+    return {
+        "archi": list(dict.fromkeys((andata or []) + (ritorno or []))),
+        "avviso": None,
+    }
 
 
 def risolvi_scenario(db, scenario):
@@ -95,16 +107,35 @@ def numero(v):
 def sovrapposizione(db, scenario):
     """Un elemento per intervento, con gli archi risolti e l'etichetta da mostrare sulla mappa."""
     elementi = []
-    for it, ris in zip(scenario.get("interventi") or [], risolvi_scenario(db, scenario)):
+    for it, ris in zip(
+        scenario.get("interventi") or [], risolvi_scenario(db, scenario)
+    ):
         if it.get("tipo") == "velocita":
             segnaposto = ",".join("?" * len(ris["archi"]))
-            prima = sorted({r[0] for r in db.execute(
-                f"SELECT kmh FROM archi WHERE id IN ({segnaposto})", ris["archi"])})
-            etichetta = f"{'/'.join(numero(k) for k in prima)} → {numero(it.get('kmh'))} km/h"
+            prima = sorted(
+                {
+                    r[0]
+                    for r in db.execute(
+                        f"SELECT kmh FROM archi WHERE id IN ({segnaposto})",
+                        ris["archi"],
+                    )
+                }
+            )
+            etichetta = (
+                f"{'/'.join(numero(k) for k in prima)} → {numero(it.get('kmh'))} km/h"
+            )
         else:
             etichetta = "chiusa a: " + ", ".join(it.get("vietato_a") or ["tutti"])
-        elementi.append({"tipo": it.get("tipo"), "via": it.get("via"), "tra": it.get("tra"),
-                         "etichetta": etichetta, "archi": ris["archi"], "avviso": ris["avviso"]})
+        elementi.append(
+            {
+                "tipo": it.get("tipo"),
+                "via": it.get("via"),
+                "tra": it.get("tra"),
+                "etichetta": etichetta,
+                "archi": ris["archi"],
+                "avviso": ris["avviso"],
+            }
+        )
     return elementi
 
 
@@ -117,6 +148,8 @@ if __name__ == "__main__":
     with open(sys.argv[-1], encoding="utf-8") as f:
         scen = json.load(f)
     for el in sovrapposizione(sqlite3.connect(indice), scen):
-        print(f"{el['via']} {el['tra'] or ''} [{el['etichetta']}]: {len(el['archi'])} archi"
-              + (f"  ⚠ {el['avviso']}" if el["avviso"] else ""))
+        print(
+            f"{el['via']} {el['tra'] or ''} [{el['etichetta']}]: {len(el['archi'])} archi"
+            + (f"  ⚠ {el['avviso']}" if el["avviso"] else "")
+        )
         print("   ", " ".join(el["archi"]))

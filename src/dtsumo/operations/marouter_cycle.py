@@ -257,7 +257,7 @@ def build_sumocfg_day(
     edgedata_additional = work_dir / "edgedata_config_final.add.xml"
     _write_edgedata_additional(edgedata_additional, final_edge_output)
 
-    config_name = f"francia_peschiera_MAROUTER_{scenario[3:]}{run_tag}_DAY_scaled{scale}.sumocfg"
+    config_name = f"francia_peschiera_MAROUTER_{scenario[3:]}{run_tag}_DAY_scaled{scale}_seed{cfg.SEED}.sumocfg"
     CfgAttributes(
         net=net_file or cfg.NET_FILE,
         routes=routes_final,

@@ -15,6 +15,7 @@ scelta (MODALITA); scenario e baseline usano sempre gli stessi round:
   4. confronto con la baseline (compare.py) e classificazione degli archi,
      salvati in sim/<id>/risultati.json.
 """
+
 import json
 import sqlite3
 import sys
@@ -26,26 +27,46 @@ from datetime import datetime
 from pathlib import Path
 
 from agent.configurazione import CONFIG
-from agent.motore import (CARTELLA, ErroreDtsumo, avvia, baseline_pronta, confronto, invia,
-                          scenari_simulati, stato, verifica)
+from agent.motore import (
+    CARTELLA,
+    ErroreDtsumo,
+    avvia,
+    baseline_pronta,
+    confronto,
+    invia,
+    scenari_simulati,
+    stato,
+    verifica,
+)
 
 INDICE = CONFIG.indice
 CARTELLA_SIM = CONFIG.simulazioni
-MODALITA = {"veloce": 3, "completa": 6}   # round di assegnazione in dtSumo (completa = N_ROUNDS di run.py)
+MODALITA = {
+    "veloce": 3,
+    "completa": 6,
+}  # round di assegnazione in dtSumo (completa = N_ROUNDS di run.py)
 MODALITA_PREDEFINITA = "veloce"
-ATTESA = 60                 # secondi tra un controllo del log e il successivo
+ATTESA = 60  # secondi tra un controllo del log e il successivo
 BASELINE = {"id": "baseline", "interventions": []}
-MAX_PARALLELE = 4           # simulazioni insieme in dtSumo (GUI e agente): ognuna usa un core e qualche GB
-IN_CORSO = set()            # id delle simulazioni in corso
+MAX_PARALLELE = (
+    4  # simulazioni insieme in dtSumo (GUI e agente): ognuna usa un core e qualche GB
+)
+IN_CORSO = set()  # id delle simulazioni in corso
 BLOCCO = threading.Lock()
-BLOCCO_BASELINE = threading.Lock()   # la baseline si lancia una volta sola anche con più richieste
+BLOCCO_BASELINE = (
+    threading.Lock()
+)  # la baseline si lancia una volta sola anche con più richieste
 
 # Soglie del confronto arco per arco: sotto queste variazioni l'arco è "invariato".
 # Veicoli: dalla baseline dtSumo con 5 seed (seed_noise.py), sugli archi con almeno 200 veicoli
 # al giorno il 95% delle differenze tra seed resta sotto il 15-21%.
-SOGLIE = {"veicoli": 100, "veicoli_rel": 0.25,       # veicoli entrati: almeno 100 e almeno il 25%
-          "vel_kmh": 5, "vel_rel": 0.25,             # velocità media: almeno 5 km/h e almeno il 25%
-          "min_veicoli_vel": 20}                     # velocità confrontata solo con almeno 20 veicoli
+SOGLIE = {
+    "veicoli": 100,
+    "veicoli_rel": 0.25,  # veicoli entrati: almeno 100 e almeno il 25%
+    "vel_kmh": 5,
+    "vel_rel": 0.25,  # velocità media: almeno 5 km/h e almeno il 25%
+    "min_veicoli_vel": 20,
+}  # velocità confrontata solo con almeno 20 veicoli
 
 
 class ErroreSimulazione(Exception):
@@ -64,13 +85,19 @@ def attendi(ident, n_round):
         s = stato(ident, n_round)
         if s["uscita"] is not None:
             if s["uscita"] != 0:
-                raise ErroreSimulazione(f"dtSumo si è fermato con codice {s['uscita']} "
-                                        f"(log in {CARTELLA / 'logs' / f'{ident}_r{n_round}.log'})", s["log"])
+                raise ErroreSimulazione(
+                    f"dtSumo si è fermato con codice {s['uscita']} "
+                    f"(log in {CARTELLA / 'logs' / f'{ident}_r{n_round}.log'})",
+                    s["log"],
+                )
             return
         if s["round"] is not None and s["round"] != ultimo:
             ultimo = s["round"]
-            yield {"tipo": "avanzamento", "frazione": round(ultimo / n_round, 3),
-                   "messaggio": f"round {ultimo + 1}/{n_round} (marouter + sumo meso su 24 ore)"}
+            yield {
+                "tipo": "avanzamento",
+                "frazione": round(ultimo / n_round, 3),
+                "messaggio": f"round {ultimo + 1}/{n_round} (marouter + sumo meso su 24 ore)",
+            }
         if s["finale"] and not finale:
             finale = True
             yield fase("Estensione O'/D' fatta, simulazione finale")
@@ -78,11 +105,15 @@ def attendi(ident, n_round):
 
 
 def baseline(n_round):
-    with BLOCCO_BASELINE:       # se un'altra simulazione la sta già calcolando, qui si aspetta
+    with (
+        BLOCCO_BASELINE
+    ):  # se un'altra simulazione la sta già calcolando, qui si aspetta
         if baseline_pronta(BASELINE["id"], n_round):
             yield fase(f"Baseline a {n_round} round già simulata in dtSumo")
             return
-        yield fase(f"Baseline: assegnazione e simulazione dtSumo ({n_round} round, si fa una volta sola)")
+        yield fase(
+            f"Baseline: assegnazione e simulazione dtSumo ({n_round} round, si fa una volta sola)"
+        )
         invia(BASELINE, n_round)
         avvia(BASELINE["id"], n_round)
         yield from attendi(BASELINE["id"], n_round)
@@ -95,17 +126,23 @@ def avvisi_verifica(controllo):
         if "factor" in rep:
             continue
         if rep.get("lanes_kept_for_turns"):
-            avvisi.append(f"intervento {n}: {rep['lanes_kept_for_turns']} corsie lasciate aperte "
-                          "perché sono le uniche da cui si svolta")
+            avvisi.append(
+                f"intervento {n}: {rep['lanes_kept_for_turns']} corsie lasciate aperte "
+                "perché sono le uniche da cui si svolta"
+            )
         if rep.get("edges_unchanged"):
-            avvisi.append(f"intervento {n}: {rep['edges_unchanged']} archi restano invariati "
-                          "(a una corsia, la chiusura parziale ne lascia sempre una)")
+            avvisi.append(
+                f"intervento {n}: {rep['edges_unchanged']} archi restano invariati "
+                "(a una corsia, la chiusura parziale ne lascia sempre una)"
+            )
     return avvisi
 
 
 # --- Confronto -----------------------------------------------------------------
 def variazione_pct(prima, dopo):
-    return round((dopo - prima) / prima * 100, 1) if prima and dopo is not None else None
+    return (
+        round((dopo - prima) / prima * 100, 1) if prima and dopo is not None else None
+    )
 
 
 def classifica(p, d):
@@ -113,18 +150,37 @@ def classifica(p, d):
     (meno traffico o più veloce), 0 invariato. Il peggioramento prevale."""
     dv = d["veicoli"] - p["veicoli"]
     soglia = max(SOGLIE["veicoli"], SOGLIE["veicoli_rel"] * p["veicoli"])
-    traffico = 0 if abs(dv) < soglia else (1 if abs(dv) < 3 * soglia else 2) * (1 if dv > 0 else -1)
+    traffico = (
+        0
+        if abs(dv) < soglia
+        else (1 if abs(dv) < 3 * soglia else 2) * (1 if dv > 0 else -1)
+    )
     lento = 0
-    if (p["vel_kmh"] is not None and d["vel_kmh"] is not None
-            and min(p["veicoli"], d["veicoli"]) >= SOGLIE["min_veicoli_vel"]):
+    if (
+        p["vel_kmh"] is not None
+        and d["vel_kmh"] is not None
+        and min(p["veicoli"], d["veicoli"]) >= SOGLIE["min_veicoli_vel"]
+    ):
         dvel = d["vel_kmh"] - p["vel_kmh"]
         soglia = max(SOGLIE["vel_kmh"], SOGLIE["vel_rel"] * p["vel_kmh"])
-        lento = 0 if abs(dvel) < soglia else (1 if abs(dvel) < 2 * soglia else 2) * (1 if dvel < 0 else -1)
+        lento = (
+            0
+            if abs(dvel) < soglia
+            else (1 if abs(dvel) < 2 * soglia else 2) * (1 if dvel < 0 else -1)
+        )
     if traffico > 0 or lento > 0:
-        motivi = [m for m, c in (("più traffico", traffico > 0), ("più lento", lento > 0)) if c]
+        motivi = [
+            m
+            for m, c in (("più traffico", traffico > 0), ("più lento", lento > 0))
+            if c
+        ]
         return max(traffico, lento), " e ".join(motivi)
     if traffico < 0 or lento < 0:
-        motivi = [m for m, c in (("meno traffico", traffico < 0), ("più veloce", lento < 0)) if c]
+        motivi = [
+            m
+            for m, c in (("meno traffico", traffico < 0), ("più veloce", lento < 0))
+            if c
+        ]
         return min(traffico, lento), " e ".join(motivi)
     return 0, "invariato"
 
@@ -133,34 +189,69 @@ def confronta(db, dati, scenario, avvisi):
     """dati: il JSON di compare.py ({arco: {"baseline": [veicoli, km/h, perso s], "scenario": [...]}})."""
     archi = {}
     for a, valori in dati["edges"].items():
-        p, d = ({"veicoli": v[0], "vel_kmh": v[1], "perso_s": v[2]}
-                for v in (valori["baseline"], valori["scenario"]))
+        p, d = (
+            {"veicoli": v[0], "vel_kmh": v[1], "perso_s": v[2]}
+            for v in (valori["baseline"], valori["scenario"])
+        )
         livello, motivo = classifica(p, d)
-        archi[a] = {"veicoli": [p["veicoli"], d["veicoli"]], "vel_kmh": [p["vel_kmh"], d["vel_kmh"]],
-                    "perso_s": [p["perso_s"], d["perso_s"]], "livello": livello, "motivo": motivo}
+        archi[a] = {
+            "veicoli": [p["veicoli"], d["veicoli"]],
+            "vel_kmh": [p["vel_kmh"], d["vel_kmh"]],
+            "perso_s": [p["perso_s"], d["perso_s"]],
+            "livello": livello,
+            "motivo": motivo,
+        }
 
     # Per le vie: veicoli·km (veicoli entrati × lunghezza degli archi) e tempo perso, prima e dopo
     per_via = defaultdict(lambda: [0.0, 0.0, 0.0, 0.0])
-    for a, nome, lung in db.execute("SELECT id, nome, lunghezza_m FROM archi WHERE nome IS NOT NULL"):
+    for a, nome, lung in db.execute(
+        "SELECT id, nome, lunghezza_m FROM archi WHERE nome IS NOT NULL"
+    ):
         if a in archi:
             v = per_via[nome]
             v[0] += archi[a]["veicoli"][0] * lung / 1000
             v[1] += archi[a]["veicoli"][1] * lung / 1000
             v[2] += archi[a]["perso_s"][0] / 60
             v[3] += archi[a]["perso_s"][1] / 60
-    vie = sorted(({"via": nome, "veicoli_km": [round(v[0], 1), round(v[1], 1)],
-                   "variazione_pct": variazione_pct(v[0], v[1]),
-                   "perso_min": [round(v[2], 1), round(v[3], 1)]} for nome, v in per_via.items()),
-                 key=lambda v: -abs(v["veicoli_km"][1] - v["veicoli_km"][0]))[:10]
+    vie = sorted(
+        (
+            {
+                "via": nome,
+                "veicoli_km": [round(v[0], 1), round(v[1], 1)],
+                "variazione_pct": variazione_pct(v[0], v[1]),
+                "perso_min": [round(v[2], 1), round(v[3], 1)],
+            }
+            for nome, v in per_via.items()
+        ),
+        key=lambda v: -abs(v["veicoli_km"][1] - v["veicoli_km"][0]),
+    )[:10]
 
-    nomi = {"viaggi_completati": "trips", "durata_media_s": "mean_duration_s",
-            "tempo_perso_medio_s": "mean_time_loss_s", "teletrasporti": "teleports"}
+    nomi = {
+        "viaggi_completati": "trips",
+        "durata_media_s": "mean_duration_s",
+        "tempo_perso_medio_s": "mean_time_loss_s",
+        "teletrasporti": "teleports",
+    }
     g_rif, g_scen = dati["globals"]["baseline"], dati["globals"]["scenario"]
-    globali = {k: {"prima": g_rif[c], "dopo": g_scen[c], "variazione_pct": variazione_pct(g_rif[c], g_scen[c])}
-               for k, c in nomi.items()}
-    return {"scenario": scenario, "calcolato": datetime.now().isoformat(timespec="seconds"),
-            "avvisi": avvisi, "scartati": None, "globali": globali, "soglie": SOGLIE,
-            "corsie_chiuse": dati["lanes_closed"], "vie": vie, "archi": archi}
+    globali = {
+        k: {
+            "prima": g_rif[c],
+            "dopo": g_scen[c],
+            "variazione_pct": variazione_pct(g_rif[c], g_scen[c]),
+        }
+        for k, c in nomi.items()
+    }
+    return {
+        "scenario": scenario,
+        "calcolato": datetime.now().isoformat(timespec="seconds"),
+        "avvisi": avvisi,
+        "scartati": None,
+        "globali": globali,
+        "soglie": SOGLIE,
+        "corsie_chiuse": dati["lanes_closed"],
+        "vie": vie,
+        "archi": archi,
+    }
 
 
 def scenari_pronti():
@@ -169,20 +260,32 @@ def scenari_pronti():
     simulati = scenari_simulati()
     baseline = {(r, seme) for ident, r, seme in simulati if ident == BASELINE["id"]}
     nomi = {r: m for m, r in MODALITA.items()}
-    return sorted(({"id": ident, "modalita": nomi.get(r, f"{r} round")} for ident, r, seme in simulati
-                   if (r, seme) in baseline and ident != BASELINE["id"]), key=lambda s: s["id"])
+    return sorted(
+        (
+            {"id": ident, "modalita": nomi.get(r, f"{r} round")}
+            for ident, r, seme in simulati
+            if (r, seme) in baseline and ident != BASELINE["id"]
+        ),
+        key=lambda s: s["id"],
+    )
 
 
-def importa(ident, n_round, indice=INDICE):
+def importa(ident, n_round, indice=INDICE, dati=None):
     """Risultati di uno scenario simulato in dtSumo ma non seguito dalla GUI (per esempio dopo un
-    riavvio), salvati come se l'avesse appena simulato. Restituisce (scenario, controllo)."""
-    dati = confronto(ident, BASELINE["id"], n_round)
+    riavvio), salvati come se l'avesse appena simulato. Restituisce (scenario, controllo).
+    """
+    if dati is None:
+        dati = confronto(ident, BASELINE["id"], n_round)
     scenario = dati["scenario"]
     controllo = {"ok": True, "interventions": dati["interventions"]}
-    risultati = confronta(sqlite3.connect(indice), dati, scenario, avvisi_verifica(controllo))
+    risultati = confronta(
+        sqlite3.connect(indice), dati, scenario, avvisi_verifica(controllo)
+    )
     cartella = CARTELLA_SIM / ident
     cartella.mkdir(parents=True, exist_ok=True)
-    (cartella / "risultati.json").write_text(json.dumps(risultati, ensure_ascii=False), encoding="utf-8")
+    (cartella / "risultati.json").write_text(
+        json.dumps(risultati, ensure_ascii=False), encoding="utf-8"
+    )
     return scenario, controllo
 
 
@@ -217,7 +320,9 @@ def _simula(scenario, indice, modalita):
         return
     try:
         if modalita not in MODALITA:
-            raise ErroreSimulazione(f"modalità '{modalita}' sconosciuta: {', '.join(MODALITA)}")
+            raise ErroreSimulazione(
+                f"modalità '{modalita}' sconosciuta: {', '.join(MODALITA)}"
+            )
         n_round = MODALITA[modalita]
         db = sqlite3.connect(indice)
         yield fase("Verifica dello scenario in dtSumo")
@@ -233,20 +338,29 @@ def _simula(scenario, indice, modalita):
         cartella = CARTELLA_SIM / scenario["id"]
         cartella.mkdir(parents=True, exist_ok=True)
         (cartella / "risultati.json").unlink(missing_ok=True)
-        yield fase(f"Scenario: assegnazione, estensione e simulazione dtSumo ({n_round} round, modalità {modalita})")
+        yield fase(
+            f"Scenario: assegnazione, estensione e simulazione dtSumo ({n_round} round, modalità {modalita})"
+        )
         invia(scenario, n_round)
         avvia(scenario["id"], n_round)
         yield from attendi(scenario["id"], n_round)
 
         yield fase("Confronto con la baseline")
-        risultati = confronta(db, confronto(scenario["id"], BASELINE["id"], n_round), scenario, avvisi)
-        (cartella / "risultati.json").write_text(json.dumps(risultati, ensure_ascii=False), encoding="utf-8")
+        risultati = confronta(
+            db, confronto(scenario["id"], BASELINE["id"], n_round), scenario, avvisi
+        )
+        (cartella / "risultati.json").write_text(
+            json.dumps(risultati, ensure_ascii=False), encoding="utf-8"
+        )
         yield {"tipo": "fine", "id": scenario["id"], "globali": risultati["globali"]}
     except (ErroreSimulazione, ErroreDtsumo) as e:
         yield {"tipo": "errore", "messaggio": str(e), "log": e.log}
     except Exception as e:
-        yield {"tipo": "errore", "messaggio": f"errore imprevisto: {type(e).__name__}: {e}",
-               "log": traceback.format_exc(limit=4)}
+        yield {
+            "tipo": "errore",
+            "messaggio": f"errore imprevisto: {type(e).__name__}: {e}",
+            "log": traceback.format_exc(limit=4),
+        }
     finally:
         IN_CORSO.discard(scenario["id"])
 
@@ -274,7 +388,11 @@ def main():
         elif ev["tipo"] == "fine":
             print(f"\nRisultati in {CARTELLA_SIM / ev['id'] / 'risultati.json'}")
             for nome, g in ev["globali"].items():
-                pct = "" if g["variazione_pct"] is None else f"  ({g['variazione_pct']:+.1f}%)"
+                pct = (
+                    ""
+                    if g["variazione_pct"] is None
+                    else f"  ({g['variazione_pct']:+.1f}%)"
+                )
                 print(f"   {nome:<22} {g['prima']!s:>8} → {g['dopo']!s:<8}{pct}")
 
 
