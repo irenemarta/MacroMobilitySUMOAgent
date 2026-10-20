@@ -31,7 +31,7 @@ import agent.simula as simula
 from agent.configurazione import CONFIG
 from agent.indice_rete import cerca_via, incroci
 from agent.risolvi import archi_via
-from agent.motore import ErroreDtsumo, verifica
+from agent.motore import ErroreDtsumo, check_response
 
 # Da riga di comando l'indice si può indicare come argomento; altrimenti usa la configurazione.
 # La connessione è condivisa tra i thread della GUI: solo letture, quindi senza rischi.
@@ -335,7 +335,7 @@ def crea_scenario(args):
         "interventions": interventi,
     }
     try:
-        controllo = verifica(scenario)
+        controllo = check_response(scenario)
     except ErroreDtsumo as e:
         return {"ok": False, "errori": [f"simulatore non raggiungibile: {e}"]}
     if not controllo["ok"]:

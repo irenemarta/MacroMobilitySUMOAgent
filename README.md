@@ -2,7 +2,7 @@
 
 ## Project objective
 SUMO Digital Twin for macroscopic traffic assignment and what-if scenarios simulations through an AI agent able to translate italian written user requests into scenarios, comparing them to a baseline.
-This work was born from a collaboration of Politecnico di Torino with CinqueT Srl and it has been set up as a case study over Turin Municiaplity. For several technical reasons, the selected area was the junction among Corso Francia, Corso Peschiera, Corso Telesio and Corso Brunelleschi, which is one of the main arteries connecting the city center to the outskirts. 
+This work was born from a collaboration of Politecnico di Torino with CinqueT Srl and it has been set up as a case study over Turin Municipality. For several technical reasons, the selected area was the junction between Corso Francia, Corso Peschiera, Corso Telesio and Corso Brunelleschi, which is one of the main arteries connecting the city center to the outskirts. 
 
 ## Modules
 The project runs on two main packages:

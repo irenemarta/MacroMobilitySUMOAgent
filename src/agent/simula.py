@@ -28,15 +28,15 @@ from pathlib import Path
 
 from agent.configurazione import CONFIG
 from agent.motore import (
-    CARTELLA,
+    FOLDER,
     ErroreDtsumo,
-    avvia,
-    baseline_pronta,
-    confronto,
-    invia,
-    scenari_simulati,
-    stato,
-    verifica,
+    run_in_background,
+    baseline_ok,
+    comparison_bs_scen,
+    send_scenario,
+    simulated_scenarios,
+    sim_state,
+    check_response,
 )
 
 INDICE = CONFIG.indice
@@ -82,12 +82,12 @@ def attendi(ident, n_round):
     """Aspetta la fine della simulazione ident in dtSumo; genera eventi di avanzamento."""
     ultimo, finale = None, False
     while True:
-        s = stato(ident, n_round)
-        if s["uscita"] is not None:
-            if s["uscita"] != 0:
+        s = sim_state(ident, n_round)
+        if s["exit"] is not None:
+            if s["exit"] != 0:
                 raise ErroreSimulazione(
-                    f"dtSumo si è fermato con codice {s['uscita']} "
-                    f"(log in {CARTELLA / 'logs' / f'{ident}_r{n_round}.log'})",
+                    f"dtSumo si è fermato con codice {s['exit']} "
+                    f"(log in {FOLDER / 'logs' / f'{ident}_r{n_round}.log'})",
                     s["log"],
                 )
             return
@@ -108,14 +108,14 @@ def baseline(n_round):
     with (
         BLOCCO_BASELINE
     ):  # se un'altra simulazione la sta già calcolando, qui si aspetta
-        if baseline_pronta(BASELINE["id"], n_round):
+        if baseline_ok(BASELINE["id"], n_round):
             yield fase(f"Baseline a {n_round} round già simulata in dtSumo")
             return
         yield fase(
             f"Baseline: assegnazione e simulazione dtSumo ({n_round} round, si fa una volta sola)"
         )
-        invia(BASELINE, n_round)
-        avvia(BASELINE["id"], n_round)
+        send_scenario(BASELINE, n_round)
+        run_in_background(BASELINE["id"], n_round)
         yield from attendi(BASELINE["id"], n_round)
 
 
@@ -257,7 +257,7 @@ def confronta(db, dati, scenario, avvisi):
 def scenari_pronti():
     """Scenari simulati in dtSumo con una baseline degli stessi round e dello stesso seme, quindi
     confrontabili: [{"id": ..., "modalita": ...}]."""
-    simulati = scenari_simulati()
+    simulati = simulated_scenarios()
     baseline = {(r, seme) for ident, r, seme in simulati if ident == BASELINE["id"]}
     nomi = {r: m for m, r in MODALITA.items()}
     return sorted(
@@ -275,7 +275,7 @@ def importa(ident, n_round, indice=INDICE, dati=None):
     riavvio), salvati come se l'avesse appena simulato. Restituisce (scenario, controllo).
     """
     if dati is None:
-        dati = confronto(ident, BASELINE["id"], n_round)
+        dati = comparison_bs_scen(ident, BASELINE["id"], n_round)
     scenario = dati["scenario"]
     controllo = {"ok": True, "interventions": dati["interventions"]}
     risultati = confronta(
@@ -326,7 +326,7 @@ def _simula(scenario, indice, modalita):
         n_round = MODALITA[modalita]
         db = sqlite3.connect(indice)
         yield fase("Verifica dello scenario in dtSumo")
-        controllo = verifica(scenario)
+        controllo = check_response(scenario)
         if not controllo["ok"]:
             raise ErroreSimulazione("scenario non valido: " + controllo["error"])
         avvisi = avvisi_verifica(controllo)
@@ -341,13 +341,13 @@ def _simula(scenario, indice, modalita):
         yield fase(
             f"Scenario: assegnazione, estensione e simulazione dtSumo ({n_round} round, modalità {modalita})"
         )
-        invia(scenario, n_round)
-        avvia(scenario["id"], n_round)
+        send_scenario(scenario, n_round)
+        run_in_background(scenario["id"], n_round)
         yield from attendi(scenario["id"], n_round)
 
         yield fase("Confronto con la baseline")
         risultati = confronta(
-            db, confronto(scenario["id"], BASELINE["id"], n_round), scenario, avvisi
+            db, comparison_bs_scen(scenario["id"], BASELINE["id"], n_round), scenario, avvisi
         )
         (cartella / "risultati.json").write_text(
             json.dumps(risultati, ensure_ascii=False), encoding="utf-8"
