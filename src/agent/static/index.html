@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Agente what-if · Torino</title>
+    <title>MacroMobility SUMO Agent · Torino</title>
     <link rel="icon" href="data:," />
     <link
       rel="stylesheet"
@@ -124,6 +124,16 @@
         flex: 1;
         min-width: 0;
         font-weight: 400;
+      }
+      #marchio {
+        background: var(--testo);
+        color: #fff;
+        font-weight: 700;
+        font-size: 12px;
+        letter-spacing: 0.03em;
+        padding: 4px 10px;
+        border-radius: 5px;
+        white-space: nowrap;
       }
       .interruttore {
         display: inline-flex;
@@ -504,8 +514,12 @@
       .top-vie .var {
         font-size: 12px;
       }
-      .top-vie .var { font-size: 12px; }
-      #vie-variate h3:not(:first-child) { margin-top: 10px; }
+      .top-vie .var {
+        font-size: 12px;
+      }
+      #vie-variate h3:not(:first-child) {
+        margin-top: 10px;
+      }
 
       /* --- colonna destra: chat e traccia --- */
       #col-destra {
@@ -809,6 +823,7 @@
       <section id="col-mappa">
         <header id="barra">
           <div class="riga-barra">
+            <span id="marchio">MacroMobilitySUMOAgent</span>
             <label class="campo"
               >Scenario
               <select id="scelta-scenario">
@@ -1867,7 +1882,7 @@
 
       function benvenuto() {
         const esempi = [
-          "chiudi corso Peschiera",
+          "chiudi piazza Massaua",
           "chiudi corso Francia tra corso Peschiera e corso Monte Cucco",
           "limite di 30 km/h in corso Filippo Brunelleschi",
         ];
