@@ -318,7 +318,7 @@ def crea_scenario(args):
     interventi = args.get("interventions") or []
     if not interventi:
         errori.append("nessun intervento indicato")
-        fascia = args.get("fascia_oraria") or None
+    fascia = args.get("fascia_oraria") or None
     if fascia is not None:
         errore = errore_fascia(fascia)
         if errore:

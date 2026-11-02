@@ -150,15 +150,10 @@ def compare_baseline_to_scenario(
 @click.argument("scenario")
 @click.option("--baseline", required=True)
 @click.option("--variant", default=VARIANT, show_default=True)
-@click.option(
-    "--json", "as_json", is_flag=True, help="One JSON line on stdout (for the agent)."
-)
 @click.option("--from", "from_", help="Start of the time window, HH:MM (with --to).")
 @click.option("--to", help="End of the time window, HH:MM (with --from).")
-@click.option(
-    "--json", "as_json", is_flag=True, help="One JSON line on stdout (for the agent)."
-)
-def cli(scenario, baseline, variant, as_json):
+@click.option("--json", "as_json", is_flag=True, help="One JSON line on stdout (for the agent).")
+def cli(scenario, baseline, variant, from_, to, as_json):
     if bool(from_) != bool(to):
         raise click.UsageError("give both --from and --to, or neither")
     window = None
@@ -166,7 +161,7 @@ def cli(scenario, baseline, variant, as_json):
         window = (_seconds(from_), _seconds(to))
         if not 0 <= window[0] < window[1] <= 24 * 3600:
             raise click.UsageError(f"the window {from_}-{to} must go forward within the day")
-    result = compare_baseline_to_scenario(scenario, baseline, variant)
+    result = compare_baseline_to_scenario(scenario, baseline, variant, window)
     if as_json:
         print(json.dumps(result, ensure_ascii=False))
         return

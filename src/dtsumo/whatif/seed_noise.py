@@ -17,7 +17,7 @@ import click
 import numpy as np
 
 import dtsumo.inputs.config as cfg
-from dtsumo.analysis.compare import edge_data, trip_stats
+from dtsumo.analysis.compare import edge_stats, sim_stats
 from dtsumo.whatif.run import VARIANTS
 
 MIN_VEHICLES = 200  # per day: below this the relative differences are meaningless
@@ -58,11 +58,11 @@ def cli(runs, variant):
     """RUNS as id:seed, the first one is the reference."""
     pairs = [r.split(":") for r in runs]
     infos = [run_info(variant, sid, seed) for sid, seed in pairs]
-    edges = [edge_data(Path(i["outputs"]["edgedata"])) for i in infos]
+    edges = [edge_stats(Path(i["outputs"]["edgedata"])) for i in infos]
 
     print("global trip stats")
     for (sid, seed), info in zip(pairs, infos):
-        print(f"\t{sid} (seed {seed}): {trip_stats(Path(info['outputs']['sim_out']))}")
+        print(f"\t{sid} (seed {seed}): {sim_stats(Path(info['outputs']['sim_out']))}")
 
     ref_id = f"{pairs[0][0]} (seed {pairs[0][1]})"
     for name, index in (("vehicles entered", 0), ("time loss", 2)):

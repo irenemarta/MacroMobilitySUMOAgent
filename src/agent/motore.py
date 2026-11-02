@@ -151,7 +151,7 @@ def comparison_bs_scen(ident, baseline_id, n_round, window=None):
     cmd = [
         sys.executable,
         "-m",
-        MODULO_CONFRONTO,
+        COMPARISON_MODULE,
         name(ident, n_round),
         "--baseline",
         name(baseline_id, n_round),

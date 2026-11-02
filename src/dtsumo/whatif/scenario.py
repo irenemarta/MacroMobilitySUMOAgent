@@ -689,7 +689,6 @@ def resolve_scenario(net: "sumolib.net.Net", scenario: dict, taz_file: Path) -> 
         if kind != "demand" and intervention.get("time"):
             # the net is the same all day: a time limit here would be silently ignored
             raise ScenarioError(
-                Fore.YELLOW +
                 f"intervention {n}: 'time' works only for 'demand'; '{kind}' lasts the whole day "
                 "(to look at one time window, compare the results with --from/--to)"
             )
