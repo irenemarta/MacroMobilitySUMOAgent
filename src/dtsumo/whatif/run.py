@@ -59,7 +59,8 @@ def _print_report_(resolved_scen: dict, disturbance: list):
         }  # too many ids to print
         print(f"\tintervention {n}: {report}")
     print(
-        f"\t{len(resolved_scen['lanes_closed'])} edges changed, {len(disturbance)} disturbed connections"
+        f"\t{len(resolved_scen['lanes_closed'])} edges changed, {len(disturbance)} disturbed connections, "
+        f"{len(resolved_scen['junctions'])} junction movements removed"
     )
 
 

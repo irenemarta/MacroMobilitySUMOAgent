@@ -22,6 +22,7 @@ import sqlite3
 import sys
 import threading
 import time
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -52,36 +53,36 @@ CARTELLA_CONTROLLI = (
     CARTELLA_SCENARI / "controlli"
 )  # resoconti di dtSumo, fuori da scenari/*.json
 CARTELLA_CONTROLLI.mkdir(exist_ok=True)
-
 SYSTEM = """Sei l'assistente di un simulatore di traffico (SUMO, pipeline dtSumo, Torino). Traduci le richieste what-if dell'utente in uno scenario, lo simuli e ne riferisci i risultati.
 Regole:
 - Verifica SEMPRE ogni via con cerca_via. Usa solo nomi che compaiono in "esatte".
 - Se "esatte" è vuoto ma c'è un suggerimento plausibile, chiedi conferma all'utente prima di usarlo. Se ci sono più esatte o più suggerimenti plausibili, chiedi quale intende.
 - Per sapere quali vie incrociano una via usa trasversali.
 - Per i tratti "tra X e Y" usa "between", e verifica con incroci_tra che X e Y incrocino davvero la via. Per chiudere un tratto non usare "from"/"to": senza "fraction" vengono ignorati e si chiude tutta la via.
-- "Chiudi" una via o un tratto: type "closure" (tutte le corsie, per tutti i veicoli, tutto il giorno).
+- "Chiudi" una via o un tratto: type "closure" (tutte le corsie, per tutti i veicoli).
 - Cantiere o restringimento: type "partial_closure" con "severity" = quota di capacità che resta, tra 0 e 1 esclusi.
-  Esempi: metà carreggiata -> 0.5; chiusa una corsia su tre -> 0.67. Se l'utente non dice quanto, chiedilo.
+    Esempi: metà carreggiata -> 0.5; chiusa una corsia su tre -> 0.67. Se l'utente non dice quanto, chiedilo.
 - Cantiere lungo una parte della via: "from" (trasversale da cui parte), "fraction" (quota della lunghezza della via, es. 0.1 per il 10%) e, se l'utente indica la direzione, "to". Non usare "between" insieme a "fraction".
 - Più o meno traffico: type "demand" con "factor" (1.3 = +30%, 0.8 = -20%). Senza "via" vale per tutta la rete; con "via" per le zone attraversate da quella via.
-  "time": ["HH:MM", "HH:MM"] per una fascia oraria. "direction": "to" per chi arriva nella zona (es. una manifestazione o un evento), "from" per chi parte, altrimenti "both".
-  Una manifestazione alle 18 si può rendere con più arrivi prima ("to", es. 16:30-18:00) e più partenze dopo ("from", es. 20:00-21:30).
+"time": ["HH:MM", "HH:MM"] per una fascia oraria. "direction": "to" per chi arriva nella zona (es. una manifestazione o un evento), "from" per chi parte, altrimenti "both".
+Una manifestazione alle 18 si può rendere con più arrivi prima ("to", es. 16:30-18:00) e più partenze dopo ("from", es. 20:00-21:30).
+- Zone: se l'utente indica una zona con il suo numero (TAZ), usa "taz": ["604"] al posto di "via". "Chiudere una zona" può voler dire chiuderne le strade (closure con "taz") o togliere i viaggi che partono o arrivano lì (demand con "taz" e "factor": 0): chiedi quale intende.
 - Limite di velocità: type "speed" con "kmh" in km/h (es. 30 per una zona 30), su una via o su un tratto "between".
 - Semafori: type "tls" con "via" e "at" (la trasversale dell'incrocio) e "action":
-  "green" con "seconds" = secondi di verde in più (o in meno, negativi) per la via, in ognuna delle sue fasi;
-  "cycle" con "factor" = tutto il ciclo più lungo o più corto (1.2 = +20%);
-  "off" = semaforo spento, l'incrocio diventa a precedenza.
-  Solo alcuni incroci hanno i semafori reali: se il simulatore rifiuta l'incrocio, dillo all'utente.
-- Per ora non si possono simulare: chiusure di incroci, categorie di veicoli. Se l'utente li chiede, spiegalo.
-- Quando hai tutte le informazioni chiama crea_scenario: lo scenario viene verificato dal simulatore. Se restituisce errori, correggi o chiedi all'utente. Se va bene, riassumi il resoconto e chiedi se simulare.
-- simula_scenario avvia la simulazione e torna subito. Modalità "veloce" (meno round di assegnazione, circa la metà del tempo) o "completa" (più precisa, alcune ore): se l'utente non lo dice usa "veloce". Quando l'utente chiede come è andata, usa risultati_scenario e riassumi in poche righe i numeri principali (vie che cambiano di più, tempo perso).
+"green" con "seconds" = secondi di verde in più (o in meno, negativi) per la via, in ognuna delle sue fasi;
+"cycle" con "factor" = tutto il ciclo più lungo o più corto (1.2 = +20%);
+"off" = semaforo spento, l'incrocio diventa a precedenza.
+Solo alcuni incroci hanno i semafori reali: se il simulatore rifiuta l'incrocio, dillo all'utente.
+- Chiudere un incrocio: type "junction" con "via" e "at": nessun veicolo attraversa l'incrocio, in nessuna direzione.
+    Svolta vietata: type "junction" con anche "from" (la via da cui si arriva) e "to" (la via in cui si svolterebbe), ciascuna uguale a "via" o ad "at". Si vietano tutti i movimenti da "from" in "to" in quell'incrocio: il simulatore non distingue destra e sinistra.
+- Orari: "time" vale solo per "demand". Chiusure, cantieri, limiti di velocità, semafori e incroci valgono per tutta la giornata simulata: se l'utente li chiede solo in certe ore, spiegalo e proponi di guardare i risultati solo in quella fascia.
+- "fascia_oraria" (in crea_scenario, fuori dagli interventi): i risultati riguardano solo quella fascia, con minuti 00 o 30 (es. ["07:00", "09:30"]). Usala quando l'utente vuole sapere cosa succede in certe ore, per esempio nell'ora di punta.
+- Per ora non si possono simulare: categorie di veicoli. Se l'utente le chiede, spiegalo.
+- Quando hai tutte le informazioni chiama crea_scenario: lo scenario viene verificato dal simulatore. Se restituisce errori, correggi o chiedi all'utente. Se va bene, riassumi il resoconto e chiedi se simulare: chiama simula_scenario solo dopo che l'utente ha risposto di sì.
+- simula_scenario avvia la simulazione e torna subito. Modalità "veloce" (meno round di assegnazione) o "completa" (più precisa, richiede più tempo): se l'utente non lo dice usa "veloce". Non indicare quanto durerà in minuti o in ore: non lo sai. Di' che i risultati si possono chiedere più tardi.
+- Quando l'utente chiede come è andata, usa risultati_scenario e riassumi in poche righe i numeri principali: indicatori globali, vie con più traffico e vie con meno traffico.
 - Alcuni scenari sono già stati simulati in dtSumo: scenari_simulati li elenca, risultati_scenario ne legge i risultati.
-- Le variazioni del tempo perso medio sotto il 50% e quelle delle singole vie sotto il 20% possono dipendere dal caso (seme della simulazione): dillo quando le riferisci.
-- Per ora non si possono simulare: categorie di veicoli. Se l'utente li chiede, spiegalo.
-- Quando hai tutte le informazioni chiama crea_scenario: lo scenario viene verificato dal simulatore. Se restituisce errori, correggi o chiedi all'utente. Se va bene, riassumi il resoconto e chiedi se simulare.
-- La simulazione dura circa un'ora: simula_scenario la avvia e torna subito. Quando l'utente chiede come è andata, usa risultati_scenario e riassumi in poche righe i numeri principali (vie che cambiano di più, tempo perso).
-- Alcuni scenari sono già stati simulati in dtSumo: scenari_simulati li elenca, risultati_scenario ne legge i risultati.
-- Le variazioni del tempo perso medio sotto il 50% e quelle delle singole vie sotto il 20% possono dipendere dal caso (seme della simulazione): dillo quando le riferisci.
+- Non dire che una variazione è significativa o che è sicuramente dovuta allo scenario: ogni simulazione usa un solo seme. Le variazioni del tempo perso medio sotto il 50% e quelle delle singole vie sotto il 20% possono dipendere dal caso: dillo quando le riferisci.
 - Rispondi in italiano, in modo breve."""
 
 TOOLS = [
@@ -156,6 +157,13 @@ TOOLS = [
                         "type": "string",
                         "description": "Una frase che riassume lo scenario",
                     },
+                    "fascia_oraria": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "description": "solo se l'utente vuole i risultati di una fascia: ['HH:MM', 'HH:MM'], minuti 00 o 30",
+                    },
                     "interventions": {
                         "type": "array",
                         "items": {
@@ -169,12 +177,18 @@ TOOLS = [
                                         "demand",
                                         "speed",
                                         "tls",
+                                        "junction",
                                     ],
                                 },
                                 "via": {"type": "string"},
+                                "taz": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "numeri delle zone (TAZ), al posto di 'via'",
+                                },
                                 "at": {
                                     "type": "string",
-                                    "description": "la trasversale che incrocia 'via' nell'incrocio semaforizzato",
+                                    "description": "la trasversale che incrocia 'via' nell'incrocio (semaforo o incrocio da chiudere)",
                                 },
                                 "tls": {"type": "string"},
                                 "action": {"type": "string", "enum": ["green", "cycle", "off"]},
@@ -286,6 +300,17 @@ def trasversali(via):
         ],
     }
 
+def errore_fascia(fascia):
+    """None se la fascia dei risultati va bene, altrimenti il motivo. Il confronto legge i dati
+    della simulazione a blocchi di 30 minuti, quindi la fascia inizia e finisce a :00 o :30."""
+    if not (isinstance(fascia, list) and len(fascia) == 2
+            and all(isinstance(t, str) and re.fullmatch(r"\d{1,2}:(00|30)", t) for t in fascia)):
+        return f"fascia_oraria {fascia}: servono due orari ['HH:MM', 'HH:MM'] con minuti 00 o 30"
+    inizio, fine = (int(t.split(":")[0]) * 60 + int(t.split(":")[1]) for t in fascia)
+    if not 0 <= inizio < fine <= 24 * 60:
+        return f"fascia_oraria {fascia}: l'inizio deve venire prima della fine, nella stessa giornata"
+    return None
+
 
 def crea_scenario(args):
     """Il modello propone, il codice decide: prima i nomi delle vie sull'indice, poi dtSumo."""
@@ -293,6 +318,11 @@ def crea_scenario(args):
     interventi = args.get("interventions") or []
     if not interventi:
         errori.append("nessun intervento indicato")
+        fascia = args.get("fascia_oraria") or None
+    if fascia is not None:
+        errore = errore_fascia(fascia)
+        if errore:
+            errori.append(errore)
     for n, it in enumerate(interventi, 1):
         via = it.get("via", "")
         if it.get("type") == "speed":
@@ -300,14 +330,14 @@ def crea_scenario(args):
                 errori.append(
                     f"intervento {n}: per un limite di velocità serve il valore 'kmh "
                 )
-        if it.get("type") in ("demand", "tls") and not via:
-            continue  # tutta la rete o zone TAZ: le controlla dtSumo
+        if (it.get("type") in ("demand", "tls") or it.get("taz")) and not via:
+            continue  # tutta la rete, zone TAZ o semaforo per id: li controlla dtSumo
         if via not in vie:
             errori.append(f"intervento {n}: '{via}' non è nell'indice, usa cerca_via")
             continue
-        trasversali = list(it.get("between") or []) + [
-            it[k] for k in ("from", "to", "at") if it.get(k)
-        ]
+        # in un incrocio "from" e "to" sono la via o la trasversale stessa: li controlla dtSumo
+        chiavi = ("at",) if it.get("type") == "junction" else ("from", "to", "at")
+        trasversali = list(it.get("between") or []) + [it[k] for k in chiavi if it.get(k)]
         for t in trasversali:
             if t not in vie:
                 errori.append(f"intervento {n}: la trasversale '{t}' non è nell'indice")
@@ -334,6 +364,8 @@ def crea_scenario(args):
         "descrizione": args.get("descrizione", ""),
         "interventions": interventi,
     }
+    if fascia:
+        scenario["fascia_oraria"] = fascia
     try:
         controllo = check_response(scenario)
     except ErroreDtsumo as e:
@@ -379,6 +411,15 @@ def crea_scenario(args):
                 }
             )
             continue
+        if it["type"] == "junction":
+            resoconto.append(
+                {
+                    "nodi": len(rep["nodes"]),
+                    "movimenti_tolti": rep["connections_closed"],
+                    "svolta_vietata": rep["turn"],
+                }
+            )
+            continue
         r = {
             "archi": rep["n_edges"],
             "metri": rep["length_m"],
@@ -391,7 +432,11 @@ def crea_scenario(args):
         if "fraction_effective" in rep:
             r["quota_effettiva"] = rep["fraction_effective"]
         resoconto.append(r)
-    return {"ok": True, "id": ident, "file": str(percorso), "resoconto": resoconto}
+    esito = {"ok": True, "id": ident, "file": str(percorso), "resoconto": resoconto}
+    if fascia:
+        esito["risultati_sulla_fascia"] = fascia
+    return esito
+
 
 
 # --- Conversioni --------------------------------------------------------------
@@ -468,10 +513,21 @@ def risultati_scenario(ident):
     r = json.loads(file_risultati.read_text())
     return {
         "stato": "finita",
+        "fascia_oraria": r.get("fascia_oraria") or "tutto il giorno",
         "globali": r["globali"],
         "avvisi": r["avvisi"],
-        "vie_che_cambiano_di_piu": r["vie"][:5],
+        "vie_con_piu_traffico": [v for v in r["vie"] if v["veicoli_km"][1] > v["veicoli_km"][0]],
+        "vie_con_meno_traffico": [v for v in r["vie"] if v["veicoli_km"][1] < v["veicoli_km"][0]],
     }
+
+
+def luogo(it, rep):
+    """Nome da mostrare per un intervento senza via: zone, semaforo indicato per id, tutta la rete."""
+    if rep.get("taz"):
+        return f"zone {', '.join(rep['taz'])}"
+    if it["type"] == "tls":
+        return f"semaforo {rep['tls']}"
+    return "tutta la rete"
 
 
 def sovrapposizione(scenario):
@@ -480,11 +536,18 @@ def sovrapposizione(scenario):
     elementi = []
     for it, rep in zip(scenario["interventions"], controllo["interventions"]):
         if it["type"] == "demand":
-            etichetta = f"domanda × {rep['factor']}"
+            verso = {"to": ", solo arrivi", "from": ", solo partenze"}.get(rep["direction"], "")
+            orario = "" if (rep["begin"], rep["end"]) == (0, 24 * 3600) else f", {ora(rep['begin'])}–{ora(rep['end'])}"
+            etichetta = f"domanda × {rep['factor']}{verso}{orario}"
         elif it["type"] == "closure":
             etichetta = "chiusa"
         elif it["type"] == "speed":
             etichetta = f"{kmh(it['ms'])} km/h"
+        elif it["type"] == "junction":
+            etichetta = (
+                f"svolta vietata: da {rep['turn'][0]} in {rep['turn'][1]}"
+                if rep.get("turn") else "incrocio chiuso"
+            )
         elif it["type"] == "tls":
             etichetta = {
                 "green": f"semaforo: verde {rep.get('seconds', 0):+g} s",
@@ -496,10 +559,13 @@ def sovrapposizione(scenario):
         elementi.append(
             {
                 "tipo": it["type"],
-                "via": it.get("via"),
+                "via": it.get("via") or luogo(it, rep),
+                "at": it.get("at"),
                 "tra": it.get("between"),
                 "etichetta": etichetta,
                 "archi": rep["edge_ids"],
+                "nodi": rep.get("nodes", []),
+                "zone": rep.get("taz", []),
                 "avviso": None,
             }
         )
