@@ -145,19 +145,23 @@ def baseline_ok(baseline_id, n_round):
     return any(i == baseline_id and r == n_round for i, r, _ in simulated_scenarios())
 
 
-def comparison_bs_scen(ident, baseline_id, n_round):
-    """JSON of compare.py: scenario vs baseline (see simula.confronta)."""
+def comparison_bs_scen(ident, baseline_id, n_round, window=None):
+    """JSON of compare.py: scenario vs baseline (see simula.confronta).
+    window: ["HH:MM", "HH:MM"] to compare only that time window, None for the whole day."""
+    cmd = [
+        sys.executable,
+        "-m",
+        MODULO_CONFRONTO,
+        name(ident, n_round),
+        "--baseline",
+        name(baseline_id, n_round),
+        "--json",
+    ]
+    if window:
+        cmd += ["--from", window[0], "--to", window[1]]
     try:
         r = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                COMPARISON_MODULE,
-                name(ident, n_round),
-                "--baseline",
-                name(baseline_id, n_round),
-                "--json",
-            ],
+            cmd,
             cwd=cfg.BASE_PATH,
             capture_output=True,
             text=True,

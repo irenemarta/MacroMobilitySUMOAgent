@@ -213,18 +213,20 @@ def confronta(db, dati, scenario, avvisi):
             v[1] += archi[a]["veicoli"][1] * lung / 1000
             v[2] += archi[a]["perso_s"][0] / 60
             v[3] += archi[a]["perso_s"][1] / 60
-    vie = sorted(
-        (
-            {
-                "via": nome,
-                "veicoli_km": [round(v[0], 1), round(v[1], 1)],
-                "variazione_pct": variazione_pct(v[0], v[1]),
-                "perso_min": [round(v[2], 1), round(v[3], 1)],
-            }
-            for nome, v in per_via.items()
-        ),
-        key=lambda v: -abs(v["veicoli_km"][1] - v["veicoli_km"][0]),
-    )[:10]
+    tutte = [
+        {
+            "via": nome,
+            "veicoli_km": [round(v[0], 1), round(v[1], 1)],
+            "variazione_pct": variazione_pct(v[0], v[1]),
+            "perso_min": [round(v[2], 1), round(v[3], 1)],
+        }
+        for nome, v in per_via.items()
+    ]
+    delta = lambda v: v["veicoli_km"][1] - v["veicoli_km"][0]
+    # le 5 con più traffico e le 5 con meno traffico, ciascuna dalla variazione più grande
+    peggiorate = sorted((v for v in tutte if delta(v) > 0), key=delta, reverse=True)[:5]
+    migliorate = sorted((v for v in tutte if delta(v) < 0), key=delta)[:5]
+    vie = peggiorate + migliorate
 
     nomi = {
         "viaggi_completati": "trips",
@@ -251,6 +253,7 @@ def confronta(db, dati, scenario, avvisi):
         "corsie_chiuse": dati["lanes_closed"],
         "vie": vie,
         "archi": archi,
+        "fascia_oraria": scenario.get("fascia_oraria"),  # None = tutto il giorno
     }
 
 
@@ -347,7 +350,10 @@ def _simula(scenario, indice, modalita):
 
         yield fase("Confronto con la baseline")
         risultati = confronta(
-            db, comparison_bs_scen(scenario["id"], BASELINE["id"], n_round), scenario, avvisi
+            db,
+            comparison_bs_scen(scenario["id"], BASELINE["id"], n_round, scenario.get("fascia_oraria")),
+            scenario,
+            avvisi,
         )
         (cartella / "risultati.json").write_text(
             json.dumps(risultati, ensure_ascii=False), encoding="utf-8"

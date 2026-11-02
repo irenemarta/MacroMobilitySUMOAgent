@@ -112,6 +112,16 @@
         gap: 10px;
         flex-wrap: wrap;
       }
+      #marchio {
+        background: var(--testo);
+        color: #fff;
+        font-weight: 700;
+        font-size: 12px;
+        letter-spacing: 0.03em;
+        padding: 4px 10px;
+        border-radius: 5px;
+        white-space: nowrap;
+      }
       .campo {
         display: flex;
         align-items: center;
@@ -242,6 +252,18 @@
         font-weight: 700;
         font-size: 12px;
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+      }
+      .leaflet-tooltip.etichetta-vel.tipo-partial_closure {
+        background: #ea580c;
+      }
+      .leaflet-tooltip.etichetta-vel.tipo-tls {
+        background: #0d9488;
+      }
+      .leaflet-tooltip.etichetta-vel.tipo-junction {
+        background: #dc2626;
+      }
+      .leaflet-tooltip.etichetta-vel.tipo-demand {
+        background: #db2777;
       }
       .leaflet-tooltip.etichetta-vel::before {
         display: none;
@@ -1041,7 +1063,21 @@
         incrocio: "#f59e0b",
         chiusura: "#dc2626",
         velocita: "#7c3aed",
+        cantiere: "#ea580c",
+        semaforo: "#0d9488",
+        domanda: "#db2777",
       };
+      // aspetto di ogni tipo di intervento sulla mappa e nella legenda
+      const STILE_INTERVENTO = {
+        closure: { c: COLORI.chiusura, tratteggio: "7 5", nome: "chiusura" },
+        partial_closure: { c: COLORI.cantiere, tratteggio: "3 4", nome: "cantiere", etichetta: true },
+        speed: { c: COLORI.velocita, nome: "cambio di velocità", etichetta: true },
+        // semafori e incroci: solo il punto sul nodo, gli archi restano liberi per i risultati
+        tls: { c: COLORI.semaforo, nome: "semaforo", etichetta: true, soloNodi: true },
+        junction: { c: COLORI.chiusura, nome: "incrocio o svolta", etichetta: true, soloNodi: true },
+        demand: { c: COLORI.domanda, nome: "domanda (zone)", etichetta: true, sottile: true },
+      };
+      const stile = (tipo) => STILE_INTERVENTO[tipo] || STILE_INTERVENTO.speed;
       const SCALA_VEL = [
         [10, "#7f1d1d", "&lt;10"],
         [20, "#ea580c", "10–20"],
@@ -1339,8 +1375,9 @@
         voci.push(
           simbolo("alone", COLORI.evidenza, "via cercata"),
           simbolo("punto", COLORI.incrocio, "incrocio"),
-          simbolo("tratteggio", COLORI.chiusura, "chiusura"),
-          simbolo("", COLORI.velocita, "cambio di velocità"),
+          ...[...new Set((stato.dettaglio ? stato.dettaglio.sovrapposizione : []).map((el) => el.tipo))]
+          .map((tipo) => stile(tipo))
+          .map((st) => simbolo(st.soloNodi ? "punto" : st.tratteggio ? "tratteggio" : "", st.c, st.nome)),
         );
         $("#legenda").innerHTML = voci.join("");
       }
@@ -1492,15 +1529,18 @@
         const d = stato.dettaglio;
         if (!d) return;
         for (const el of d.sovrapposizione) {
-          const chiusura = el.tipo === "chiusura_via";
+          const st = stile(el.tipo);
           const tratto = el.tra
             ? ` tra ${esc(el.tra[0])} e ${esc(el.tra[1])}`
-            : "";
+            : el.at
+              ? ` × ${esc(el.at)}`
+              : "";
           const testo = `<b>${esc(el.via)}</b>${tratto}<br>${esc(el.etichetta)}`;
-          for (const id of el.archi) {
+          const conNodi = st.soloNodi && el.nodi && el.nodi.length;
+          for (const id of conNodi ? [] : el.archi) {
             const a = stato.archi.get(id);
             if (!a) continue;
-            const w = peso(a.p.corsie) + 1.5;
+            const w = st.sottile ? peso(a.p.corsie) : peso(a.p.corsie) + 1.5;
             const bordo = L.polyline(geometria(id), {
               renderer: tela,
               color: "#fff",
@@ -1510,10 +1550,10 @@
             });
             const linea = L.polyline(geometria(id), {
               renderer: tela,
-              color: chiusura ? COLORI.chiusura : COLORI.velocita,
+              color: st.c,
               weight: w,
-              opacity: 1,
-              dashArray: chiusura ? "7 5" : null,
+              opacity: st.sottile ? 0.8 : 1,
+              dashArray: st.tratteggio || null,
             })
               .bindTooltip(testo, { sticky: true, className: "tip" })
               .on("click", (e) => {
@@ -1524,8 +1564,33 @@
             livelli.bordo.addLayer(bordo);
             livelli.scenario.addLayer(linea);
           }
-          if (!chiusura && el.archi.length) {
-            // etichetta "50 → 30 km/h" sull'arco più vicino al centro dell'intervento
+          // semafori e incroci: un punto su ogni nodo, e l'etichetta sul primo
+          const nodi = (el.nodi || []).map((n) => stato.nodi[n]).filter(Boolean);
+          for (const c of nodi)
+            livelli.scenario.addLayer(
+              L.circleMarker([c[1], c[0]], {
+                renderer: tela,
+                radius: 7,
+                color: "#fff",
+                weight: 2,
+                fillColor: st.c,
+                fillOpacity: 1,
+              }).bindTooltip(testo, { className: "tip" }),
+            );
+          if (st.etichetta && nodi.length) {
+            livelli.scenario.addLayer(
+              L.tooltip({
+                permanent: true,
+                direction: "top",
+                offset: [0, -8],
+                className: `etichetta-vel tipo-${el.tipo}`,
+                interactive: false,
+              })
+                .setLatLng([nodi[0][1], nodi[0][0]])
+                .setContent(esc(el.etichetta)),
+            );
+          } else if (st.etichetta && el.archi.length) {
+            // etichetta ("50 → 30 km/h", "domanda × 1.3") sull'arco più vicino al centro dell'intervento
             const centro = limitiArchi(el.archi).getCenter();
             let migliore = null,
               distanza = Infinity;
@@ -1544,7 +1609,7 @@
                 L.tooltip({
                   permanent: true,
                   direction: "center",
-                  className: "etichetta-vel",
+                  className: `etichetta-vel tipo-${el.tipo}`,
                   interactive: false,
                 })
                   .setLatLng(migliore)
@@ -1553,6 +1618,7 @@
           }
         }
         riordina();
+        aggiornaLegenda();
       }
 
       // ---------- riquadro dello scenario e dei risultati ----------
@@ -1584,13 +1650,18 @@
         const s = d.scenario;
         const interventi = d.sovrapposizione
           .map((el) => {
-            const chiusura = el.tipo === "chiusura_via";
+            const st = stile(el.tipo);
             const tratto = el.tra
               ? ` tra ${esc(el.tra[0])} e ${esc(el.tra[1])}`
-              : "";
+              : el.at
+                ? ` × ${esc(el.at)}`
+                : "";
+            const quanti = el.nodi && el.nodi.length
+              ? `${el.nodi.length} ${el.nodi.length === 1 ? "nodo" : "nodi"}`
+              : `${el.archi.length} archi`;
             return (
-              `<li><i class="segno ${chiusura ? "tratteggio" : ""}" style="--c:${chiusura ? COLORI.chiusura : COLORI.velocita}"></i>` +
-              `<span><b>${esc(el.via)}</b>${tratto}<br><span class="tenue">${esc(el.etichetta)} · ${el.archi.length} archi</span></span></li>`
+              `<li><i class="segno ${st.tratteggio ? "tratteggio" : ""}" style="--c:${st.c}"></i>` +
+              `<span><b>${esc(el.via)}</b>${tratto}<br><span class="tenue">${esc(el.etichetta)} · ${quanti}</span></span></li>`
             );
           })
           .join("");
@@ -1598,12 +1669,9 @@
         const avvisi = d.sovrapposizione
           .filter((el) => el.avviso)
           .map((el) => el.avviso);
-        if (s.fascia_oraria)
-          avvisi.push(
-            `fascia oraria ${s.fascia_oraria.join("–")} ignorata in questa versione: l'intervento vale per tutta la simulazione`,
-          );
         stato.avvisiScheda = new Set(avvisi);
         let h = `<p class="descrizione">${esc(s.descrizione || "(senza descrizione)")}</p><ul class="interventi">${interventi}</ul>`;
+        h += `<p class="nota">Risultati: ${s.fascia_oraria ? `fascia ${esc(s.fascia_oraria.join("–"))}` : "tutto il giorno"}.</p>`;
         if (avvisi.length)
           h += `<ul class="avvisi">${avvisi.map((a) => `<li>${esc(a)}</li>`).join("")}</ul>`;
         if (d.errori && d.errori.length)
@@ -1882,9 +1950,10 @@
 
       function benvenuto() {
         const esempi = [
-          "chiudi piazza Massaua",
           "chiudi corso Francia tra corso Peschiera e corso Monte Cucco",
           "limite di 30 km/h in corso Filippo Brunelleschi",
+          "chiudi l'incrocio tra corso Francia e corso Monte Cucco",
+          "+30% di traffico verso la zona 604 dalle 7 alle 9, risultati in quella fascia",
         ];
         const div = document.createElement("div");
         div.className = "benvenuto";
