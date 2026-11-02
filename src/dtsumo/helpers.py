@@ -242,7 +242,9 @@ def _process_multiple_ods(od_path: Path | list | str, out_path: Path, min_flow: 
         final_file_path = out_path / p.name
         os.makedirs(out_path, exist_ok=True)
         
-        if final_file_path.exists() and final_file_path.stat().st_size > 0:
+        # new version only if the matrix from where data are extracted is more recent
+        if (final_file_path.exists() and final_file_path.stat().st_size > 0
+                and final_file_path.stat().st_mtime > p.stat().st_mtime):
             ods_cleaned.append(final_file_path)
             continue
         

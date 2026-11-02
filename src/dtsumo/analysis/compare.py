@@ -92,10 +92,11 @@ def _hhmm(seconds: float) -> str:
     return f"{int(seconds) // 3600:02d}:{int(seconds) % 3600 // 60:02d}"
 
 
-def sim_stats(sim_out: Path, scale: float, window: Optional[Tuple[int, int]] = None) -> dict:
+def sim_stats(sim_out: Path, scale: float, window: Optional[Tuple[int, int]] = None, seed: Optional[int] = None) -> dict:
     """Trips (all, or those departing inside window) and teleports (inside window)."""
+    tag = f"seed{seed}" if seed is not None else f"scaled{scale}"  # final runs are named by seed
     trips, duration, time_loss = 0, 0.0, 0.0
-    for tripinfo in Path(sim_out).glob(f"TripInfo_*_scaled{scale}.xml"):
+    for tripinfo in Path(sim_out).glob(f"TripInfo_*_{tag}.xml"):
         for _, el in ET.iterparse(tripinfo):
             if el.tag == "tripinfo":
                 if window is None or window[0] <= float(el.get("depart", 0)) < window[1]:
@@ -104,7 +105,7 @@ def sim_stats(sim_out: Path, scale: float, window: Optional[Tuple[int, int]] = N
                     time_loss += float(el.get("timeLoss", 0))
                 el.clear()
     teleports = 0
-    for summary in Path(sim_out).glob(f"Summary_*_scaled{scale}.xml"):
+    for summary in Path(sim_out).glob(f"Summary_*_{tag}.xml"):
         before, last = 0, 0  # teleports are cumulative: count those after the window start
         for _, el in ET.iterparse(summary):
             if el.tag == "step":
@@ -140,8 +141,8 @@ def compare_baseline_to_scenario(
         "seed": cfg.SEED,
         "edges": edges,
         "globals": {
-            "baseline": sim_stats(base["outputs"]["sim_out"], base["scale"], window),
-            "scenario": sim_stats(scen["outputs"]["sim_out"], scen["scale"], window),
+            "baseline": sim_stats(base["outputs"]["sim_out"], base["scale"], window, base["seed"]),
+            "scenario": sim_stats(scen["outputs"]["sim_out"], scen["scale"], window, scen["seed"]),
         },
         "window": list(window) if window else None,
     }

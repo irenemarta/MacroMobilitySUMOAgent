@@ -62,8 +62,7 @@ def cli(runs, variant):
 
     print("global trip stats")
     for (sid, seed), info in zip(pairs, infos):
-        print(f"\t{sid} (seed {seed}): {sim_stats(Path(info['outputs']['sim_out']))}")
-
+        print(f"\t{sid} (seed {seed}): {sim_stats(Path(info['outputs']['sim_out']), info['scale'], seed=info['seed'])}")
     ref_id = f"{pairs[0][0]} (seed {pairs[0][1]})"
     for name, index in (("vehicles entered", 0), ("time loss", 2)):
         print(
