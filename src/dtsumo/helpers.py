@@ -394,6 +394,25 @@ def write_taz_relations_24h(
 
 
 ### TLS MANAGEMENT
+TLS_OFF_SCENARIO = "tls_off.add.xml"  # written next to scenario.net.xml when a scenario switches lights off
+
+
+def write_scenario_tls_off(out_dir: Path, tls_ids: List[str], present=None) -> Path:
+    """Additional for a what-if scenario: the non-real lights (as ensure_tls_off_additional)
+    plus the real ones that the scenario switches off. A tlLogic with programID="off" and no
+    phases works only as an additional: inside net.xml SUMO crashes.
+    """
+    lines = ensure_tls_off_additional().read_text().splitlines()
+    lines += [f'    <tlLogic id="{tls_id}" type="static" programID="off" offset="0"/>' for tls_id in tls_ids]
+    lines = [l for l in lines if l.strip() not in ("<additional>", "</additional>")]
+    if present is not None:
+        lines = [l for l in lines if l.split('id="')[1].split('"')[0] in present]
+    lines = ["<additional>"] + lines + ["</additional>"]
+    path = Path(out_dir) / TLS_OFF_SCENARIO
+    path.write_text("\n".join(lines) + "\n")
+    return path
+    
+
 def ensure_tls_off_additional() -> Path:
     """Ensure that the additional file for switched off tls groups exists and rebuil it when it is older than the net file or config.py"""
     import dtsumo.inputs.config as cfg

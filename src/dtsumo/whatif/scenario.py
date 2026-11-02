@@ -17,6 +17,11 @@ Intervention json examples:
     {"type": "tls", "via": "Corso Francia", "at": "Corso Monte Cucco", "action": "green", "seconds": 10},
     {"type": "tls", "tls": "joinedS_5743605972_#11more", "action": "cycle", "factor": 1.2},
     {"type": "tls", "tls": "joinedS_5743605972_#11more", "action": "off"}
+4. junctions: to model junction closures, every movement through the junction(s) where 'via' meets 'at' is removed,
+    or, with 'from' and 'to', only the turns from edges of 'from' into edges of 'to'
+    {"type": "junction", "via": "Corso Francia", "at": "Corso Monte Cucco"},
+    {"type": "junction", "via": "Corso Francia", "at": "Corso Monte Cucco",
+    "from": "Corso Francia", "to": "Corso Monte Cucco"}
 
 "interventions": [] is the baseline.
 """
@@ -29,12 +34,13 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 import networkx as nx
+from colorama import init, Fore
 
 import dtsumo.inputs.config as cfg
 from dtsumo.operations.taz_zones import _taz_edge_ids
 
 CLOSURE_SEVERITY = 0.0  # all lanes closed
-INTERVENTION_TYPE = ["closure", "partial_closure", "speed", "demand", "tls"]
+INTERVENTION_TYPE = ["closure", "partial_closure", "speed", "demand", "tls", "junction"]
 TLS_ACTIONS = ("green", "cycle", "off")
 MIN_SPEED, MAX_SPEED = 5, 25  # m/s
 MIN_PHASE = 5  # minimum seconds of phase duration
@@ -241,17 +247,21 @@ def _variation_tls(
     via_edges = {e.getID() for e in streets[via]}
     at_edges = {e.getID() for e in streets[at]}
     for tls in net.getTrafficLights():
-            for inLane, outLane, linkNum in tls.getConnections():
-                edge = inLane.getEdge()
-                if edge.getToNode().getID() not in nodes:  # only the junction of 'via' and 'at'
-                    continue
-                if edge.getID() in via_edges:
-                    found_tls_ids[tls.getID()][0].append(linkNum)
-                elif edge.getID() in at_edges:
-                    found_tls_ids[tls.getID()][1].append(linkNum)
+        for inLane, outLane, linkNum in tls.getConnections():
+            edge = inLane.getEdge()
+            if (
+                edge.getToNode().getID() not in nodes
+            ):  # only the junction of 'via' and 'at'
+                continue
+            if edge.getID() in via_edges:
+                found_tls_ids[tls.getID()][0].append(linkNum)
+            elif edge.getID() in at_edges:
+                found_tls_ids[tls.getID()][1].append(linkNum)
     if not found_tls_ids:
         raise ScenarioError(f"no traffic light where '{at}' meets '{via}'")
-    tls_id, (via_links, at_links) = next(iter(found_tls_ids.items())) # in the case study at most one tll per junction
+    tls_id, (via_links, at_links) = next(
+        iter(found_tls_ids.items())
+    )  # in the case study at most one tll per junction
     return tls_id, via_links, at_links
 
 
@@ -569,10 +579,64 @@ def resolve_tls(
         None
         if action == "off"
         else round(
-            sum(_assign_new_duration(dur, idx, rule) for idx, (dur, _) in enumerate(phases)), 1
+            sum(
+                _assign_new_duration(dur, idx, rule)
+                for idx, (dur, _) in enumerate(phases)
+            ),
+            1,
         )
     )
     return rule
+
+
+def resolve_junction(
+    net: "sumolib.net.Net", streets: Dict[str, list], intervention: dict, n: int
+) -> dict:
+    """Movements to remove where 'via' meets 'at':
+    - to close the entire junction: all of them
+    - to model prohibited turns: using 'from' and 'to' only on the turns from edges of 'from' into edges of 'to'."""
+    name = f"intervention {n}"
+    via, at = intervention.get("via"), intervention.get("at")
+    if not via or not at:
+        raise ScenarioError(f"{name}: a junction needs 'via' and 'at'")
+    turn_to_block = (intervention.get("from"), intervention.get("to"))
+    if any(turn_to_block) and not all(turn_to_block):
+        raise ScenarioError(f"{name}: a banned turn needs both 'from' and 'to'")
+    for street in turn_to_block:
+        if street and street not in (via, at):
+            raise ScenarioError(
+                f"{name}: 'from' and 'to' must be '{via}' or '{at}', got '{street}'"
+            )
+    nodes_to_block = _junction(streets, via, at)
+    from_edges = {e.getID() for e in streets[turn_to_block[0]]} if turn_to_block[0] else None
+    to_edges = {e.getID() for e in streets[turn_to_block[1]]} if turn_to_block[1] else None
+    connections = []
+    for node in nodes_to_block.values():
+        for conn in node.getConnections():
+            from_edg, to_edg = conn.getFrom().getID(), conn.getTo().getID()
+            if from_edges is not None and (from_edg not in from_edges or to_edg not in to_edges):
+                continue
+            connections.append(
+                {
+                    "from": from_edg,
+                    "to": to_edg,
+                    "fromLane": conn.getFromLane().getIndex(),
+                    "toLane": conn.getToLane().getIndex(),
+                }
+            )
+    if not connections:
+        what = (
+            f"no turn from '{turn_to_block[0]}' into '{turn_to_block[1]}'" if turn_to_block[0] else "no movement"
+        )
+        raise ScenarioError(f"{name}: {what} where '{via}' meets '{at}'")
+    incoming = sorted(
+        {e.getID() for node in nodes_to_block.values() for e in node.getIncoming()}
+    )
+    return {
+        "nodes": sorted(nodes_to_block),
+        "connections": connections,
+        "incoming_edges": incoming,
+    }
 
 
 def resolve_intervention(
@@ -616,11 +680,19 @@ def resolve_scenario(net: "sumolib.net.Net", scenario: dict, taz_file: Path) -> 
     severities = {}  # edge -> severity
     speeds = {}  # edge -> new speed
     tls_rules = []
+    junctions_conn = []
     edges_per_intervention = []
     report = []
     demand = []  # rules for filtering.scale_od_matrices
     for n, intervention in enumerate(scenario["interventions"], start=1):
         kind = intervention.get("type")
+        if kind != "demand" and intervention.get("time"):
+            # the net is the same all day: a time limit here would be silently ignored
+            raise ScenarioError(
+                Fore.YELLOW +
+                f"intervention {n}: 'time' works only for 'demand'; '{kind}' lasts the whole day "
+                "(to look at one time window, compare the results with --from/--to)"
+            )
         if kind == "demand":
             rule = resolve_demand(streets, zones, intervention, n)
             demand.append(rule)
@@ -630,7 +702,8 @@ def resolve_scenario(net: "sumolib.net.Net", scenario: dict, taz_file: Path) -> 
                     "n_edges": 0,
                     "length_m": 0.0,
                     "severity": None,
-                    "edge_ids": [],
+                    # edges of the zones, for the chatbot map (none if the whole network)
+                    "edge_ids": _zone_edges(net, zones, rule["taz"], f"intervention {n}") if rule["taz"] else [],
                     **rule,
                 }
             )
@@ -644,13 +717,34 @@ def resolve_scenario(net: "sumolib.net.Net", scenario: dict, taz_file: Path) -> 
                 e.getID() for e in net.getTLS(rule["tls"]).getEdges()
             )
             rule_data = {k: v for k, v in rule.items() if k != "phases"}
+            tls_nodes = sorted(
+                {inlane.getEdge().getToNode().getID() for inlane, _, _ in net.getTLS(rule["tls"]).getConnections()}
+            )
             report.append(
                 {
                     "n_edges": 0,
                     "length_m": 0.0,
                     "severity": None,
                     "edge_ids": incoming_edges,
+                    "nodes": tls_nodes,
                     **rule_data,
+                }
+            )
+            continue
+
+        elif kind == "junction":
+            rule = resolve_junction(net, streets, intervention, n)
+            junctions_conn.extend(rule["connections"])
+            edges_per_intervention.append([])
+            report.append(
+                {
+                    "n_edges": 0,
+                    "length_m": 0.0,
+                    "severity": None,
+                    "edge_ids": rule["incoming_edges"],  # for the chatbot map
+                    "nodes": rule["nodes"],
+                    "connections_closed": len(rule["connections"]),
+                    "turn": [intervention["from"], intervention["to"]] if intervention.get("from") else None,
                 }
             )
             continue
@@ -727,4 +821,5 @@ def resolve_scenario(net: "sumolib.net.Net", scenario: dict, taz_file: Path) -> 
         "tls": tls_rules,
         "demand": demand,
         "interventions": report,
+        "junctions": junctions_conn,
     }

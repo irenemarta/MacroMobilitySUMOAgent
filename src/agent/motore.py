@@ -19,12 +19,12 @@ from dtsumo.whatif.scenario import ScenarioError
 
 VARIANT = "MA_with_TLS"  # default run.py
 FOLDER = cfg.OUTPUT_BASE / "agent"
-MODULO_CONFRONTO = "dtsumo.analysis.compare"  # to update if compare.py runs
-ATTESA_CONFRONTO = 600  # seconds
-ROUND_NEL_LOG = re.compile(
+COMPARISON_MODULE = "dtsumo.analysis.compare"  # to update if compare.py runs
+WAIT_TIME_COMP = 600  # seconds
+ROUND_LOG = re.compile(
     r"/DAY: ROUND (\d+)"
 )  # printed by marouter_cycle for each round
-FINALE_NEL_LOG = (
+FINAL_LOG = (
     "Final meso simulation"  # printed by run.py before the end of the simulation
 )
 
@@ -114,11 +114,11 @@ def sim_state(ident, n_round):
         log.read_text(encoding="utf-8", errors="replace") if log.exists() else ""
     )
     code = exit.read_text().strip() if exit.exists() else ""
-    round_ok = ROUND_NEL_LOG.findall(log_content)
+    round_ok = ROUND_LOG.findall(log_content)
     return {
         "exit": int(code) if code else None,
         "round": int(round_ok[-1]) if round_ok else None,
-        "final": FINALE_NEL_LOG in log_content,
+        "final": FINAL_LOG in log_content,
         "log": "\n".join(log_content.splitlines()[-40:]),
     }
 
@@ -152,7 +152,7 @@ def comparison_bs_scen(ident, baseline_id, n_round):
             [
                 sys.executable,
                 "-m",
-                MODULO_CONFRONTO,
+                COMPARISON_MODULE,
                 name(ident, n_round),
                 "--baseline",
                 name(baseline_id, n_round),
@@ -161,10 +161,10 @@ def comparison_bs_scen(ident, baseline_id, n_round):
             cwd=cfg.BASE_PATH,
             capture_output=True,
             text=True,
-            timeout=ATTESA_CONFRONTO,
+            timeout=WAIT_TIME_COMP,
         )
     except subprocess.TimeoutExpired:
-        raise ErroreDtsumo(f"il confronto non ha risposto entro {ATTESA_CONFRONTO} s")
+        raise ErroreDtsumo(f"il confronto non ha risposto entro {WAIT_TIME_COMP} s")
     if r.returncode != 0:
         raise ErroreDtsumo(
             f"il confronto si è fermato con codice {r.returncode}",

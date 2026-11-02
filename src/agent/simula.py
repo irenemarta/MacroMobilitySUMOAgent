@@ -98,7 +98,7 @@ def attendi(ident, n_round):
                 "frazione": round(ultimo / n_round, 3),
                 "messaggio": f"round {ultimo + 1}/{n_round} (marouter + sumo meso su 24 ore)",
             }
-        if s["finale"] and not finale:
+        if s["final"] and not finale:
             finale = True
             yield fase("Estensione O'/D' fatta, simulazione finale")
         time.sleep(ATTESA)

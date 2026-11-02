@@ -1,15 +1,16 @@
 """
 Network building functions for what-if scenarios.
 Closed lanes keep existing and only get disallow="all": same edges, lanes and detectors, connections and traffic lights untouched,
-so that one can avoid passing the net through netconvert/netedit for every scenario.
+Only closed junctions and banned turns go through netconvert (see _remove_connections).
 """
 
 # highest indices, lane 0 is the rightmost (source: https://sumo.dlr.de/docs/Networks/SUMO_Road_Networks.html#lanes)
 
-import sumolib
+import sumolib, subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Optional, Set
+from dtsumo.helpers import TLS_OFF_SCENARIO, write_scenario_tls_off
 from dtsumo.whatif.scenario import (
     ScenarioError,
     _assign_new_duration,
@@ -24,15 +25,18 @@ def build_scenario_net(
     out_dir: Path,
     new_speeds: Optional[Dict[str, float]] = None,
     tls_rules: Optional[List[dict]] = None,
+    removed_connections: Optional[List[dict]] = None,
 ) -> Path:
     """scenario.net.xml = base_net with disallow="all" on the closed lanes (lanes_closed: {edge: n lanes})
-    + modified speed and tls."""
+    + modified speed and tls + movements removed from closed junctions"""
     closed_lanes = set()
     for eid, k in lanes_closed.items():
         # leftmost lanes first, skipping the last lane of a turn (see scenario.which_lanes_to_close)
         for lane in which_lanes_to_close(net.getEdge(eid), k):
             closed_lanes.add(lane.getID())
 
+    if removed_connections:
+        base_net = _remove_connections(base_net, net, removed_connections, out_dir)
     tree = ET.parse(base_net)
     root = tree.getroot()
     # close the internal lanes of the movements from or to a closed lane
@@ -61,27 +65,24 @@ def build_scenario_net(
         if v_in_ms is not None:
             for lane in edge.iter("lane"):
                 lane.set("speed", f"{v_in_ms:.2f}")
+
     # tls management
     ## NB: STATIC LOGIC ONLY - no minDur/maxDur
-    applied_rules = {r["tls"]: r for r in tls_rules or []}
-    connections_tl = [c for c in root.iter("connection") if c.get("tl")]
+    applied_rules = {r["tls"]: r for r in tls_rules or [] if r["action"] != "off"}
+    # switched off lights: programID="off" in an additional next to the net (read by entities.build),
+    # so SUMO uses the junction's own right of way, as for the non-real lights
+    off_ids = sorted(r["tls"] for r in tls_rules or [] if r["action"] == "off")
+    (out_dir / TLS_OFF_SCENARIO).unlink(
+        missing_ok=True
+    )  # nothing left from a previous run
+    if off_ids or removed_connections:
+        # a fully closed junction loses its light: list only the lights still in the net
+        present = {tl.get("id") for tl in root.iter("tlLogic")}
+        write_scenario_tls_off(out_dir, off_ids, present=present)
     for tl in root.iter("tlLogic"):
         rule = applied_rules.get(tl.get("id"))
         if rule is None:
             continue
-        if rule["action"] == "off":
-            # SUMO switched off logic: 'O' = right of way, 'o' = yield
-            for c in connections_tl:
-                tls_off = {}
-                if c.get("tl") == tl.get("id"):
-                    tls_off[int(c.get("linkIndex"))] = c.get("state")
-                    num_links = len(tl.find("phase").get("state"))
-                    for phase in tl.findall("phase"):
-                        tl.remove(phase)
-                    state = "".join(tls_off.get(k, "o") for k in range(num_links))
-                    ET.SubElement(
-                        tl, "phase", {"duration": str(24 * 3600), "state": state}
-                    )
         for idx, phase in enumerate(tl.findall("phase")):  # green, cycle
             new_dur = _assign_new_duration(
                 duration=float(phase.get("duration")), phase_idx=idx, int_rule=rule
@@ -91,6 +92,56 @@ def build_scenario_net(
     scenario_net = out_dir / "scenario.net.xml"
     tree.write(scenario_net, encoding="UTF-8", xml_declaration=True)
     return scenario_net
+
+
+def _remove_connections(
+    base_net: Path, net: "sumolib.net.Net", connections: List[dict], out_dir: Path
+) -> Path:
+    """Net without the prohibited movements. 
+    marouter ignores disallow on internal lanes -> better using netconvert to 
+    delete them and rebuild both, leaving edges, lanes and junction shapes as they are."""
+    conn_file = out_dir / "junctions.con.xml"
+    lines_conn_file = ["<connections>"]
+    for conn in connections:
+        lines_conn_file.append(
+            f'    <delete from="{conn["from"]}" to="{conn["to"]}" fromLane="{conn["fromLane"]}" toLane="{conn["toLane"]}"/>'
+        )
+    lines_conn_file.append("</connections>")
+    conn_file.write_text("\n".join(lines_conn_file) + "\n")
+    net_modified = out_dir / "junctions.net.xml"
+    result = subprocess.run(
+        [
+            "netconvert",
+            "-s",
+            str(base_net),
+            "--connection-files",
+            str(conn_file),
+            "-o",
+            str(net_modified),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"netconvert could not remove the junction movements:\n{result.stderr[-2000:]}"
+        )
+    # same lanes as before: detectors, closures and the TAZ still refer to them
+    lanes_before = {
+        l.getID() for e in net.getEdges() if not e.getFunction() for l in e.getLanes()
+    }
+    lanes_after = {
+        l.get("id")
+        for e in ET.parse(net_modified).getroot().iter("edge")
+        if not e.get("function")
+        for l in e.iter("lane")
+    }
+    if lanes_before != lanes_after:
+        raise RuntimeError(
+            f"netconvert changed the lanes of the net ({len(lanes_before ^ lanes_after)} differ):"
+            f"\tcheck new net here: {net_modified}"
+        )
+    return net_modified
 
 
 def scenario_taz(

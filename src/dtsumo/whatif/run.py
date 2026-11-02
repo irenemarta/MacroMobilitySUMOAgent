@@ -110,7 +110,7 @@ def run_scenario(
     generate_all_detectors(edges_as_lanes(cfg.EDG_PARSE_XML), FREQ, det_add, det_out)
 
     net_file, taz_file, od_dir = cfg.NET_FILE, cfg.TAZ, None  # baseline
-    if resolved_scen["lanes_closed"] or resolved_scen["speeds"] or resolved_scen["tls"]:
+    if any(resolved_scen[k] for k in ("lanes_closed", "speeds", "tls", "junctions")):
         net_file = build_scenario_net(
             cfg.NET_FILE,
             net,
@@ -118,6 +118,7 @@ def run_scenario(
             work_dir,
             new_speeds=resolved_scen["speeds"],
             tls_rules=resolved_scen["tls"],
+            removed_connections=resolved_scen["junctions"],
         )
     if resolved_scen["demand"]:
         od_dir = work_dir / "od"

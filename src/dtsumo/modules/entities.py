@@ -10,8 +10,8 @@ from typing import TypedDict, Optional, Union, List, Dict, Tuple
 import pandera.pandas as pa
 from pandera.typing import Series
 from numpy import float64
-from dtsumo.helpers import ensure_tls_off_additional
 import src.dtsumo.inputs.config as cfg
+from dtsumo.helpers import TLS_OFF_SCENARIO, ensure_tls_off_additional
 
 
 @functools.lru_cache(maxsize=16)
@@ -58,8 +58,10 @@ class CfgAttributes:
             add_files.append(str(edgedata))
         if vtype:
             add_files.append(str(vtype))
-        if "with_tls" in self.config_name: # only real traffic lights on
-            add_files.append(str(ensure_tls_off_additional))
+        if "with_TLS" in self.config_name:  # only real traffic lights on
+            # a what-if scenario that switches off a light writes its own list next to its net
+            scenario_off = Path(self.net).with_name(TLS_OFF_SCENARIO)
+            add_files.append(str(scenario_off if scenario_off.exists() else ensure_tls_off_additional()))
 
         self.output_sumo.mkdir(parents=True, exist_ok=True)
         self.output_cfg.mkdir(parents=True, exist_ok=True)
