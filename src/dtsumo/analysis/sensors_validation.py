@@ -19,11 +19,12 @@ import pandas as pd
 
 from dtsumo.analysis.sensors import DATE_FORMAT, pasta_db_merge, standardize_datetime
 from dtsumo.modules.entities import DataFrameSchemaPasta
+from dtsumo.tools.detectors import load_all_detectors
 
 GEH_OK = 5.0
 GEH_BAD = 10.0
 
-MIN_GOOD_HOURS_FOR_THRESHOLD = 10  # sotto questa soglia il p90 interno non è affidabile
+MIN_GOOD_HOURS_FOR_THRESHOLD = 10  # under this thresold: p90 not precise enough
 
 
 def prepare_pasta_data(anagraphics: pd.DataFrame, flows: pd.DataFrame) -> pd.DataFrame:
@@ -656,7 +657,7 @@ def sensor_validation_cli(
     flows_path,
     out_dir,
 ):
-    """Valida l'output della simulazione contro i dati reali dei sensori PASTA (GEH, affinity)."""
+    """Validate simulation output against PASTA data using literature proven indeces (GEH, affinity)."""
     import dtsumo.inputs.config as cfg
     import pandera.errors
 

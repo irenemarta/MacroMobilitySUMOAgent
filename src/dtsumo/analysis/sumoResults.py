@@ -1,9 +1,10 @@
 """
 Dashboards for the SUMO summary output (summary.xml).
-    uv run python -m dtsumo.analysis.sumoResults SUMMARY.xml [SUMMARY.xml ...] --title "..." [--label ...] [--period DAY]
+    uv run python -m dtsumo.analysis.sumoResults SUMMARY.xml 
+    Options: [SUMMARY.xml ...] --title "..." [--label ...] [--period DAY]
 
-Every file gets its own dashboard; with two or more files a comparison plot is added too
-(e.g. SUMO 1.26 vs 1.28, TLS on vs off, meso vs LTM).
+Every file gets its own dashboard.
+With two or more files, a comparison plot is added too (e.g. SUMO 1.26 vs 1.28, TLS on vs off, meso vs LTM).
 """
 
 from pathlib import Path
