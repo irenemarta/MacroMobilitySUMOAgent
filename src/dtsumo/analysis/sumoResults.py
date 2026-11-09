@@ -1,702 +1,217 @@
 """
-Useful visualisations for SUMO simulation
+Dashboards for the SUMO summary output (summary.xml).
+    uv run python -m dtsumo.analysis.sumoResults SUMMARY.xml [SUMMARY.xml ...] --title "..." [--label ...] [--period DAY]
+
+Every file gets its own dashboard; with two or more files a comparison plot is added too
+(e.g. SUMO 1.26 vs 1.28, TLS on vs off, meso vs LTM).
 """
 
-import os
-import pandas as pd
 from pathlib import Path
-import seaborn as sns
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+from typing import Dict, List, Tuple
 import xml.etree.ElementTree as ET
 
-from typing import List, TypedDict
+import click
+import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
+import pandas as pd
+
 import dtsumo.inputs.config as cfg
 
-# TODO: ADD VEHICLE ROUTES + TRIP INFO ANALYS 
+# OD load hours shaded in the plots (seconds)
+LOAD_WINDOWS = {
+    "AM": [(8 * 3600, 9 * 3600)],
+    "PM": [(18 * 3600, 19 * 3600)],
+    "DAY": [(8 * 3600, 9 * 3600), (18 * 3600, 19 * 3600)],
+}
+LOAD_COLORS = [(0.3, 0.5, 1.0, 0.10), (1.0, 0.70, 0.1, 0.12)]  # morning blue, evening gold
 
-PALETTE_RUNNING = sns.color_palette("Blues", as_cmap=True)
-PALETTE_FAILURES = sns.color_palette("coolwarm", as_cmap=True)
+COLORS = {
+    "running": "#1565C0",
+    "halting": "#C62828",
+    "inserted": "#2E7D32",
+    "arrived": "#6A1515",
+    "loaded": "#E65100",
+    "waiting": "#B71C1C",
+    "meanSpeed": "#0277BD",
+    "meanSpeedRelative": "#78909C",
+    "meanWaitingTime": "#F57F17",
+    "meanTravelTime": "#388E3C",
+    "collisions": "#BF360C",
+    "discarded": "#D32F2F",
+    "teleports": "#1565C0",
+}
 
 
 def parse_sumo_summary(file_path: Path) -> pd.DataFrame:
-    print("\tParsing SUMO summary")
     try:
-        tree = ET.parse(file_path)
-        root = tree.getroot()
-        data = []
-        for step in root.findall("step"):
-            data.append(step.attrib)
-        df_summary = pd.DataFrame(data).apply(pd.to_numeric)
-
-        # dfs_seconds = {label: parse_sumo_summary(path) for label, path in zip(labels, path_list)}
-
-        return df_summary
-
+        root = ET.parse(file_path).getroot()
     except ET.ParseError as e:
-        raise ValueError(f"ERROR:\t Could not parse XML file:{e}")
-    except FileNotFoundError:
-        raise FileNotFoundError(f"ERROR:\t File not found at {file_path}")
+        raise ValueError(f"ERROR:\t Could not parse XML file {file_path}: {e}")
+    return pd.DataFrame([step.attrib for step in root.findall("step")]).apply(pd.to_numeric)
 
 
-def datetime_format(df_summary):
+def datetime_format(df_summary: pd.DataFrame) -> pd.DataFrame:
     df_summary["time"] = pd.to_datetime(df_summary["time"], unit="s")
-    df_summary["meanWaitingTime_dt"] = pd.to_datetime(
-        df_summary["meanWaitingTime"], unit="s"
-    )
-    df_summary["meanTravelTime_dt"] = pd.to_datetime(
-        df_summary["meanTravelTime"], unit="s"
-    )
-
+    df_summary["meanWaitingTime_dt"] = pd.to_datetime(df_summary["meanWaitingTime"], unit="s")
+    df_summary["meanTravelTime_dt"] = pd.to_datetime(df_summary["meanTravelTime"], unit="s")
     return df_summary
 
 
-def ax_style(
-    ax,
-    xlim: int,
-    title: str,
-    ylabel: str,
-    load_start: int,
-    load_end: int,
-    load_start_2: int = None,
-    load_end_2: int = None,
-    xlabel: str = "Time (h)",
-):
+def load_summary(file_path: Path) -> pd.DataFrame:
+    return datetime_format(parse_sumo_summary(file_path))
 
-    # X-axis time conversion
-    xlim_dt = pd.to_datetime(xlim, unit="s")
-    load_start_dt = pd.to_datetime(load_start, unit="s")
-    load_end_dt = pd.to_datetime(load_end, unit="s")
 
-    ax.axvspan(load_start_dt, load_end_dt, color="blue", alpha=0.1, label="Load")
-    if load_start_2 is not None and load_end_2 is not None:
-        load_start_dt_2 = pd.to_datetime(load_start_2, unit="s")
-        load_end_dt_2 = pd.to_datetime(load_end_2, unit="s")
-        ax.axvspan(
-            load_start_dt_2,
-            load_end_dt_2,
-            color="orange",
-            linestyle="--",
-            alpha=0.1,
-            label="Load",
-        )
-    elif load_start_2 is not None or load_end_2 is not None:
-        raise ValueError("Both load_start_2 and load_end_2 must be provided together.")
-
-    ax.set_title(title, fontweight="semibold", pad=10)
-    ax.set_ylabel(ylabel)
-    ax.set_xlim(right=xlim_dt)
+def _style(ax, title: str, ylabel: str):
+    ax.set_facecolor("#FAFAFA")
+    ax.set_title(title, fontsize=12, fontweight="bold", pad=5)
+    ax.set_ylabel(ylabel, fontsize=10)
+    ax.set_xlabel("time", fontsize=10)
+    ax.tick_params(labelsize=10)
+    ax.grid(True, color="#DDDDDD", linewidth=0.6, linestyle="--")
+    for spine in ax.spines.values():
+        spine.set_edgecolor("#CCCCCC")
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-    ax.legend(loc="best", frameon=False, fontsize="small")
+    ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
+    plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha="right")
 
 
-def plot_summary(
-    df_summary: pd.DataFrame,
-    title: str,
-    xlim: int,
-    load_start: int,
-    load_end: int,
-    load_start_2: int = None,
-    load_end_2: int = None,
-):
-
-    sns.set_theme(style="whitegrid")
-
-    fig, axs = plt.subplots(3, 2, figsize=(16, 12), constrained_layout=True)
-    fig.suptitle(f"SUMO Summary - {title}", fontsize=14, fontweight="bold")
-
-    # RUNNING VS HALTING
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="running",
-        ax=axs[0, 0],
-        label="Running",
-        color="blue",
-    )
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="halting",
-        ax=axs[0, 0],
-        label="Halting",
-        color="red",
-    )
-    ax_style(
-        ax=axs[0, 0],
-        xlim=xlim,
-        title="Net congestion",
-        ylabel="Number of vehicles",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-
-    # INSERTED VS ARRIVED
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="inserted",
-        ax=axs[0, 1],
-        label="Inserted",
-        color="green",
-    )
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="arrived",
-        ax=axs[0, 1],
-        label="Arrived",
-        color="darkred",
-    )
-    ax_style(
-        ax=axs[0, 1],
-        xlim=xlim,
-        title="Inserted vs Arrived",
-        ylabel="Cumulative total",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-
-    # SPEED CHECK
-    ax_speed_rel = axs[1, 0].twinx()  # NO ASSE UGUALE, MEAN RELATIVE è SCALATA
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="meanSpeed",
-        ax=axs[1, 0],
-        color="lightblue",
-        label="AVG speed (m/s)",
-    )
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="meanSpeedRelative",
-        ax=ax_speed_rel,
-        color="grey",
-        label="AVG Rel Speed (%)",
-        alpha=0.5,
-    )
-    ax_style(
-        ax=axs[1, 0],
-        xlim=xlim,
-        title="Average speed and average relative speed",
-        ylabel="Speed (m/s)",
-        load_start=load_start,
-        load_end=load_end,
-    )
-
-    ax_speed_rel.set_ylabel("Ratio with respect to the limit")
-    # set combined legend
-    lines, labels = axs[1, 0].get_legend_handles_labels()
-    lines2, labels2 = ax_speed_rel.get_legend_handles_labels()
-    ax_speed_rel.legend(lines + lines2, labels + labels2, loc="best")
-    axs[1, 0].get_legend().remove()
-
-    # AVERAGE TIME
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="meanWaitingTime_dt",
-        ax=axs[1, 1],
-        color="orange",
-        label="AVG waiting time",
-    )
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="meanTravelTime_dt",
-        ax=axs[1, 1],
-        color="green",
-        label="AVG travel time",
-    )
-    ax_style(
-        ax=axs[1, 1],
-        xlim=xlim,
-        title="Running and waiting times",
-        ylabel="Time (h)",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-    axs[1, 1].yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-
-    # INFRASTRUCTURE PERFORMANCE
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="inserted",
-        label="Inserted",
-        color="#2E7D32",
-        linewidth=2,
-        ax=axs[2, 0],
-    )  # Number of vehicles inserted so far (including reported time step)
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="loaded",
-        label="Loaded",
-        color="#FFA000",
-        ax=axs[2, 0],
-    )  # Number of vehicles that were loaded from input files up to this time step. This can included vehicle with depart times in the future.
-
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="waiting",
-        label="Waiting",
-        color="#F70A0A",
-        linewidth=2,
-        ax=axs[2, 0],
-    )  # Number of vehicles inserted so far (including reported time step)
-
-    ax_style(
-        ax=axs[2, 0],
-        xlim=xlim,
-        title="Infrastructure performance",
-        ylabel="Number of Vehicles",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-
-    # INCONVENIENCES
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="collisions",
-        label="Collisions",
-        color="#CA4514",
-        linewidth=2,
-        ax=axs[2, 1],
-    )
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="discarded",
-        label="Discarded",
-        color="#DF0707",
-        ax=axs[2, 1],
-    )
-
-    sns.lineplot(
-        data=df_summary,
-        x="time",
-        y="teleports",
-        label="Teleports",
-        color="#0951CE",
-        linewidth=2,
-        ax=axs[2, 1],
-    )
-
-    ax_style(
-        ax=axs[2, 1],
-        xlim=xlim,
-        title="Simulation failures",
-        ylabel="Number of events",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-
-    # Shared x-axes
-    for ax in [axs[0, 1], axs[2, 0], axs[2, 1]]:
-        ax.sharey(axs[2, 0])
-
-    plt.savefig(output_dir / f"dashboard_{title}", bbox_inches="tight", dpi=300)
-    plt.close()
-
-
-def plot_net_performace(
-    df_tls: pd.DataFrame,
-    df_no_tls: pd.DataFrame,
-    xlim: int,
-    title: str,
-    load_start: int,
-    load_end: int,
-    load_start_2: int = None,
-    load_end_2: int = None,
-):
-
-    sns.set_theme(style="whitegrid")
-
-    fig, axs = plt.subplots(3, 1, figsize=(20, 14), constrained_layout=True)
-    fig.suptitle(f"Net congestion comparison - {title}", fontsize=18, fontweight="bold")
-
-    sns.lineplot(
-        data=df_tls, x="time", y="running", color="blue", label="ON", ax=axs[0]
-    )
-    sns.lineplot(
-        data=df_no_tls,
-        x="time",
-        y="running",
-        label="OFF",
-        color="blue",
-        ax=axs[0],
-        linestyle="-",
-        linewidth=2,
-    )
-
-    sns.lineplot(data=df_tls, x="time", y="halting", color="red", label="ON", ax=axs[1])
-
-    sns.lineplot(
-        data=df_no_tls,
-        x="time",
-        y="halting",
-        label="OFF",
-        color="red",
-        ax=axs[1],
-        linestyle="-",
-        linewidth=2,
-    )
-
-    sns.lineplot(
-        data=df_tls, x="time", y="teleports", color="darkviolet", label="ON", ax=axs[2]
-    )
-
-    sns.lineplot(
-        data=df_no_tls,
-        x="time",
-        y="teleports",
-        label="OFF",
-        color="darkviolet",
-        ax=axs[2],
-        linestyle="-",
-        linewidth=2,
-    )
-
-    ax_style(
-        ax=axs[0],
-        xlim=xlim,
-        title="Running",
-        ylabel="Number of Vehicles",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-
-    ax_style(
-        ax=axs[1],
-        xlim=xlim,
-        title="Halting",
-        ylabel="Number of Vehicles",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-
-    ax_style(
-        ax=axs[2],
-        xlim=xlim,
-        title="Teleports",
-        ylabel="Number of Vehicles",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-
-    handles, labels = plt.gca().get_legend_handles_labels()
-    dedup_label = dict(zip(labels, handles))
-    fig.legend(
-        dedup_label.keys(),
-        dedup_label.values(),
-        loc="upper right",
-        bbox_to_anchor=(1, 1),
-        fancybox=True,
-    )
-
-    plt.savefig(output_dir / f"congestion_{title}", bbox_inches="tight", dpi=300)
-    plt.close()
-
-
-def plot_time_metrics(
-    df_tls: pd.DataFrame,
-    df_no_tls: pd.DataFrame,
-    xlim: int,
-    title: str,
-    output_dir: Path,
-    load_start: int,
-    load_end: int,
-    load_start_2: int = None,
-    load_end_2: int = None,
-):
-
-    sns.set_theme(style="whitegrid")
-
-    fig, axs = plt.subplots(2, 1, figsize=(10, 8), constrained_layout=True, sharey=True)
-    fig.suptitle(f"Time metrics comparison - {title}", fontsize=18, fontweight="bold")
-
-    def single_time_plot(df: pd.DataFrame, ax, title_subplot: str):
-        sns.lineplot(
-            data=df,
-            x="time",
-            y="meanWaitingTime_dt",
-            ax=ax,
-            color="orange",
-            label="AVG waiting time",
-        )
-        sns.lineplot(
-            data=df,
-            x="time",
-            y="meanTravelTime_dt",
-            ax=ax,
-            color="green",
-            label="AVG travel time",
-        )
-        ax_style(
-            ax=ax,
-            xlim=xlim,
-            title=title_subplot,
-            ylabel="Time (h)",
-            load_start=load_start,
-            load_end=load_end,
-            load_start_2=load_start_2,
-            load_end_2=load_end_2,
+def _shade_load_windows(ax, windows: List[Tuple[int, int]]):
+    for i, (start, end) in enumerate(windows):
+        ax.axvspan(
+            pd.to_datetime(start, unit="s"),
+            pd.to_datetime(end, unit="s"),
+            color=LOAD_COLORS[i % len(LOAD_COLORS)],
+            zorder=0,
+            label=f"Load {i + 1}",
         )
 
-    single_time_plot(df_tls, axs[0], "With 2 TLS on")
-    single_time_plot(df_no_tls, axs[1], "All TLS off")
 
-    for i in range(len(axs)):
-        axs[i].yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
-
-    plt.savefig(output_dir / f"timeMet_{title}", bbox_inches="tight", dpi=300)
-    plt.close()
+def _legend(ax, loc="upper left"):
+    ax.legend(loc=loc, fontsize=9, framealpha=0.6, facecolor="white", edgecolor="#BBBBBB")
 
 
-class AlgoInfo(TypedDict):
-    title: str
-    df: pd.DataFrame
-
-
-def compare_algos(
-    algo_dataframes: List[AlgoInfo],
-    xlim: int,
-    title: str,
-    load_start: int,
-    load_end: int,
-    load_start_2: int = None,
-    load_end_2: int = None,
-):
-
-    sns.set_theme(style="whitegrid")
-
-    fig, axs = plt.subplots(3, 1, figsize=(20, 14), constrained_layout=True)
-    algos_string = " vs. ".join([x["title"] for x in algo_dataframes])
-    fig.suptitle(
-        f"Net congestion comparison - {algos_string} ({title})",
-        fontsize=18,
-        fontweight="bold",
+def _compute_hourly(df: pd.DataFrame) -> pd.DataFrame:
+    tmp = df.copy()
+    tmp["hour"] = tmp["time"].dt.floor("h")
+    inserted = (
+        tmp.groupby("hour")["inserted"]
+        .agg(lambda s: s.iloc[-1] - s.iloc[0])
+        .rename("inserted_per_hour")
     )
-
-    for a in algo_dataframes:
-        sns.lineplot(
-            data=a["df"],
-            x="time",
-            y="running",
-            label=a["title"],
-            palette=PALETTE_RUNNING,
-            ax=axs[0],
-        )
-
-        sns.lineplot(
-            data=a["df"],
-            x="time",
-            y="halting",
-            palette=PALETTE_RUNNING,
-            label=a["title"],
-            ax=axs[1],
-        )
-
-        sns.lineplot(
-            data=a["df"],
-            x="time",
-            y="teleports",
-            palette=PALETTE_FAILURES,
-            label=["title"],
-            ax=axs[2],
-        )
-
-    ax_style(
-        ax=axs[0],
-        xlim=xlim,
-        title="Running",
-        ylabel="Number of Vehicles",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
+    waiting_running = (
+        tmp.groupby("hour")[["waiting", "running"]]
+        .mean()
+        .rename(columns={"waiting": "waiting_per_hour", "running": "running_per_hour"})
     )
-
-    ax_style(
-        ax=axs[1],
-        xlim=xlim,
-        title="Halting",
-        ylabel="Number of Vehicles",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-
-    ax_style(
-        ax=axs[2],
-        xlim=xlim,
-        title="Teleports",
-        ylabel="Number of Vehicles",
-        load_start=load_start,
-        load_end=load_end,
-        load_start_2=load_start_2,
-        load_end_2=load_end_2,
-    )
-
-    handles, labels = plt.gca().get_legend_handles_labels()
-    dedup_label = dict(zip(labels, handles))
-    fig.legend(
-        dedup_label.keys(),
-        dedup_label.values(),
-        loc="upper right",
-        bbox_to_anchor=(1, 1),
-        fancybox=True,
-    )
-
-    plt.savefig(output_dir / f"CompareAlgos_{title}", bbox_inches="tight", dpi=300)
-    plt.close()
+    return pd.concat([inserted, waiting_running], axis=1).reset_index()
 
 
-def main():
+def plot_summary(df: pd.DataFrame, title: str, windows: List[Tuple[int, int]], out_path: Path):
+    """Full dashboard of one run: 3x2 panels + hourly metrics on the last row."""
+    fig = plt.figure(figsize=(18, 17), constrained_layout=True)
+    fig.suptitle(f"SUMO Summary - {title}", fontsize=16, fontweight="bold")
+    gs = fig.add_gridspec(nrows=4, ncols=2)
+    axs = [[fig.add_subplot(gs[r, c]) for c in range(2)] for r in range(3)]
+    ax_hourly = fig.add_subplot(gs[3, :])
 
-    SUMMARY_PATHS = {
-        ("no_TLS", "AM"): cfg.SUMO_OUTPUT / "no_TLS/Summary_morning.xml",
-        ("no_TLS", "PM"): cfg.SUMO_OUTPUT / "no_TLS/Summary_night.xml",
-        ("no_TLS", "DAY"): cfg.SUMO_OUTPUT / "no_TLS/Summary_day.xml",
-        ("with_TLS", "AM"): cfg.SUMO_OUTPUT / "with_TLS/Summary_morning.xml",
-        ("with_TLS", "PM"): cfg.SUMO_OUTPUT / "with_TLS/Summary_night.xml",
-        ("with_TLS", "DAY"): cfg.SUMO_OUTPUT / "with_TLS/Summary_day.xml",
-    }
+    def lines(ax, columns, title_sub, ylabel, lw=1.5):
+        for col, label in columns:
+            ax.plot(df["time"], df[col], color=COLORS[col], lw=lw, label=label)
+        _shade_load_windows(ax, windows)
+        _style(ax, title_sub, ylabel)
+        _legend(ax)
 
-    OUTPUT_DIRS = {
-        "AM": cfg.OUTPUT_DASHBOARDS / "duarouter/out-DataExtr-OD-morning",
-        "PM": cfg.OUTPUT_DASHBOARDS / "duarouter/out-DataExtr-OD-evening",
-        "DAY": cfg.OUTPUT_DASHBOARDS / "out-DataExtr-OD-allDay",
-    }
+    lines(axs[0][0], [("running", "Running"), ("halting", "Halting")], "Net Congestion", "Number of vehicles")
+    lines(axs[0][1], [("inserted", "Inserted"), ("arrived", "Arrived")], "Inserted vs Arrived", "Cumulative total")
 
-    summaries = {}
-    for (scenario, period), path in SUMMARY_PATHS.items():
-        df = parse_sumo_summary(path)
-        summaries[(scenario, period)] = datetime_format(df)
+    # speed on two axes: meanSpeedRelative is a ratio, not m/s
+    ax = axs[1][0]
+    ax2 = ax.twinx()
+    ax.plot(df["time"], df["meanSpeed"], color=COLORS["meanSpeed"], lw=1.4, label="AVG speed (m/s)")
+    ax2.plot(df["time"], df["meanSpeedRelative"], color=COLORS["meanSpeedRelative"], lw=1.1, alpha=0.6, label="AVG Rel Speed")
+    _shade_load_windows(ax, windows)
+    _style(ax, "Average Speed & Relative Speed", "Speed (m/s)")
+    ax2.set_ylabel("Ratio w.r.t. speed limit", fontsize=8)
+    h1, l1 = ax.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax2.legend(h1 + h2, l1 + l2, loc="lower right", fontsize=7, framealpha=0.6)
 
-    # shorthand to summaries
-    am_no = summaries[("no_TLS", "AM")]
-    am_tls = summaries[("with_TLS", "AM")]
-    pm_no = summaries[("no_TLS", "PM")]
-    pm_tls = summaries[("with_TLS", "PM")]
-    day_no = summaries[("no_TLS", "DAY")]
-    day_tls = summaries[("with_TLS", "DAY")]
+    ax = axs[1][1]
+    ax.plot(df["time"], df["meanWaitingTime_dt"], color=COLORS["meanWaitingTime"], lw=1.5, label="AVG waiting time")
+    ax.plot(df["time"], df["meanTravelTime_dt"], color=COLORS["meanTravelTime"], lw=1.5, label="AVG travel time")
+    _shade_load_windows(ax, windows)
+    _style(ax, "Running & Waiting Times", "Time")
+    ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    _legend(ax)
 
-    # AM PEAK
-    plot_summary(
-        am_tls,
-        title="AM - 2 TLS on",
-        xlim=36000,
-        load_start=8 * 3600,
-        load_end=9 * 3600,
-    )
-    plot_net_performace(
-        df_no_tls=am_no,
-        df_tls=am_tls,
-        xlim=36000,
-        title="Morning peak",
-        load_start=8 * 3600,
-        load_end=9 * 3600,
-    )
-    plot_time_metrics(
-        df_tls=am_tls,
-        df_no_tls=am_no,
-        xlim=10 * 3600,
-        title="Morning Peak",
-        load_start=8 * 3600,
-        load_end=9 * 3600,
-    )
+    # loaded = vehicles read from the route files, also with future departures
+    # waiting = vehicles loaded but not inserted yet (insertion backlog)
+    ax = axs[2][0]
+    ax.set_yscale("log")
+    lines(ax, [("inserted", "Inserted"), ("loaded", "Loaded"), ("waiting", "Waiting")], "Infrastructure Performance", "Number of Vehicles")
+    lines(axs[2][1], [("collisions", "Collisions"), ("discarded", "Discarded"), ("teleports", "Teleports")], "Simulation Failures", "Number of events")
 
-    # PM PEAK
-    plot_summary(
-        pm_no,
-        title="PM - all TLS off",
-        xlim=72000,
-        load_start=18 * 3600,
-        load_end=19 * 3600,
-    )
-    plot_summary(
-        pm_tls,
-        title="PM - 2 TLS on",
-        xlim=72000,
-        load_start=18 * 3600,
-        load_end=19 * 3600,
-    )
-    plot_net_performace(
-        df_no_tls=pm_no,
-        df_tls=pm_tls,
-        xlim=72000,
-        title="Evening peak",
-        load_start=18 * 3600,
-        load_end=19 * 3600,
-    )
-    plot_time_metrics(
-        df_tls=pm_tls,
-        df_no_tls=pm_no,
-        xlim=20 * 3600,
-        title="Evening Peak",
-        load_start=18 * 3600,
-        load_end=19 * 3600,
-    )
+    hourly = _compute_hourly(df)
+    ax_hourly.plot(hourly["hour"], hourly["inserted_per_hour"], color=COLORS["inserted"], lw=2, marker="o", ms=4, label="Inserted / hour")
+    ax_hourly.plot(hourly["hour"], hourly["waiting_per_hour"], color=COLORS["meanWaitingTime"], lw=2, marker="s", ms=4, label="Avg Waiting / hour")
+    ax_hourly.plot(hourly["hour"], hourly["running_per_hour"], color=COLORS["running"], lw=2, marker="^", ms=4, label="Avg Running / hour")
+    _shade_load_windows(ax_hourly, windows)
+    _style(ax_hourly, "Hourly metrics: Inserted / Avg Waiting / Avg Running", "Vehicles")
+    _legend(ax_hourly)
 
-    # ALL DAY
-    plot_summary(
-        day_no,
-        title="DAY - all TLS off",
-        xlim=24 * 3600,
-        load_start=8 * 3600,
-        load_end=9 * 3600,
-        load_start_2=18 * 3600,
-        load_end_2=19 * 3600,
-    )
-    plot_summary(
-        day_tls,
-        title="DAY - 2 TLS on",
-        xlim=24 * 3600,
-        load_start=8 * 3600,
-        load_end=9 * 3600,
-        load_start_2=18 * 3600,
-        load_end_2=19 * 3600,
-    )
-    plot_time_metrics(
-        df_tls=am_tls,
-        df_no_tls=am_no,
-        xlim=10 * 3600,
-        title="All day",
-        load_start=8 * 3600,
-        load_end=9 * 3600,
-    )
-    plot_time_metrics(
-        df_tls=day_tls,
-        df_no_tls=day_no,
-        xlim=24 * 3600,
-        title="All day",
-        load_start=8 * 3600,
-        load_end=9 * 3600,
-        load_start_2=18 * 3600,
-        load_end_2=19 * 3600,
-    )
+    fig.savefig(out_path, dpi=300, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
+def plot_compare(dfs: Dict[str, pd.DataFrame], title: str, windows: List[Tuple[int, int]], out_path: Path):
+    """Same metrics for several runs, one line per run."""
+    panels = [
+        ("running", "Running", "Vehicles"),
+        ("halting", "Halting", "Vehicles"),
+        ("arrived", "Arrived (cumulative)", "Vehicles"),
+        ("meanSpeed", "Mean speed", "m/s"),
+        ("meanWaitingTime", "Mean waiting time", "s"),
+        ("teleports", "Teleports (cumulative)", "Events"),
+    ]
+    fig, axs = plt.subplots(3, 2, figsize=(18, 14), constrained_layout=True)
+    fig.suptitle(f"SUMO Comparison - {title}", fontsize=16, fontweight="bold")
+
+    for ax, (col, title_sub, ylabel) in zip(axs.flatten(), panels):
+        for label, df in dfs.items():
+            ax.plot(df["time"], df[col], lw=1.5, label=label)
+        _shade_load_windows(ax, windows)
+        _style(ax, title_sub, ylabel)
+        _legend(ax)
+
+    fig.savefig(out_path, dpi=300, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
+@click.command(name="sumo-summary")
+@click.argument("summaries", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--label", "labels", multiple=True, help="One per summary file, same order (default: file name).")
+@click.option("--title", required=True)
+@click.option("--period", type=click.Choice(list(LOAD_WINDOWS)), default="DAY", show_default=True, help="Load hours to shade.")
+@click.option("--out-dir", type=click.Path(path_type=Path), default=None, help="Default: cfg.OUTPUT_DASHBOARDS.")
+def main(summaries, labels, title, period, out_dir):
+    if labels and len(labels) != len(summaries):
+        raise click.UsageError("Give one --label per summary file, or none.")
+    labels = labels or [p.stem for p in summaries]
+    out_dir = out_dir or cfg.OUTPUT_DASHBOARDS
+    out_dir.mkdir(parents=True, exist_ok=True)
+    windows = LOAD_WINDOWS[period]
+    slug = title.replace(" ", "_")
+
+    dfs = {label: load_summary(path) for label, path in zip(labels, summaries)}
+    for label, df in dfs.items():
+        out_path = out_dir / f"dashboard_{slug}_{label}.png"
+        plot_summary(df, f"{title} - {label}", windows, out_path)
+        click.echo(f"Dashboard saved in {out_path}")
+
+    if len(dfs) > 1:
+        out_path = out_dir / f"compare_{slug}.png"
+        plot_compare(dfs, title, windows, out_path)
+        click.echo(f"Comparison saved in {out_path}")
 
 
 if __name__ == "__main__":

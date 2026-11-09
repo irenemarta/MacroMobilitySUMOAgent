@@ -178,24 +178,50 @@ def _get_det_output_data(file):
     tree = ET.parse(file)
     root = tree.getroot()
 
-    data = []
-    for interval in root.findall("interval"):
-        data.append(interval.attrib)
+    df = pd.DataFrame([interval.attrib for interval in root.findall("interval")])
+    for col in df.columns:
+        if col != "id":
+            df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    df_det_data = (
-        pd.DataFrame(data)
-        .apply(pd.to_numeric, errorPs="ignore")
-        .assign(
-            time_dt=lambda x: abs(x["begin"] - x["end"]),
-            cum_time=lambda x: x["time_dt"].cumsum(),
-            cum_vehic=lambda x: x["nVehEntered"].cumsum(),
-            cum_flow=lambda x: x['flow'].cumsum(),
-            throughput=lambda x: x['flow'] / x['time_dt'],
-            cum_throughput=lambda x: x['cum_vehic'] / x['cum_time'],
-        )
+    # meso writes 'entered', micro writes 'nVehEntered'
+    count_col = "nVehEntered" if "nVehEntered" in df.columns else "entered"
+    # the columns may be missing if the detector never saw a vehicle
+    for col in (count_col, "flow"):
+        if col not in df.columns:
+            df[col] = 0.0
+    df[[count_col, "flow"]] = df[[count_col, "flow"]].fillna(0)
+    df["nVehEntered"] = df[count_col]
+
+    return df.assign(
+        time_dt=lambda x: abs(x["begin"] - x["end"]),
+        cum_time=lambda x: x["time_dt"].cumsum(),
+        cum_vehic=lambda x: x["nVehEntered"].cumsum(),
+        cum_flow=lambda x: x["flow"].cumsum(),
+        throughput=lambda x: x["nVehEntered"] / x["time_dt"],
+        cum_throughput=lambda x: x["cum_vehic"] / x["cum_time"],
     )
 
-    return df_det_data
+
+def load_all_detectors(det_out_dir: Path) -> pd.DataFrame:
+    """
+    All det_<lane>.xml files of a folder, lanes summed per edge: one row per (edge, interval)
+    with the same columns as sensors_validation.load_edgedata() (flow_veh_h, speed).
+    """
+    dfs = []
+    for file in Path(det_out_dir).glob("det_*.xml"):
+        df = _get_det_output_data(file)
+        df["edge_id"] = file.stem.replace("det_", "").rsplit("_", 1)[0]
+        dfs.append(df[["edge_id", "begin", "end", "nVehEntered", "speed"]])
+    if not dfs:
+        raise FileNotFoundError(f"No det_*.xml files in {det_out_dir}")
+
+    df = pd.concat(dfs, ignore_index=True)
+    df["speed"] = df["speed"].where(df["speed"] >= 0)  # -1 = no vehicle in the interval
+    df = df.groupby(["edge_id", "begin", "end"], as_index=False).agg(
+        entered=("nVehEntered", "sum"), speed=("speed", "mean")
+    )
+    df["flow_veh_h"] = df["entered"] / ((df["end"] - df["begin"]) / 3600)
+    return df
 
 
 

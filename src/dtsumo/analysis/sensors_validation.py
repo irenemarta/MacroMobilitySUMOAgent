@@ -4,7 +4,7 @@ Validates simulation's edge output against real sensor data using:
     comparing modeled vs observed flow (GEH<=5 good, 5-10 caution, >10 poor)
 - Validation using an "affinity index" (as in TuST - Rapelli et al. 2018) per sensor.
 
-Real sensor data is the ground truth used to validate both meso or micro simulations.
+Real sensor data is the ground truth used to validate both meso or micro simulations. SImulated data come either from edgeData dump (--edgedata) or E1 detector outputs (--det-out).
 """
 
 import math
@@ -56,7 +56,9 @@ def load_validated_sensor_data(path: Path) -> pd.DataFrame:
     return validate_sensor_df(pd.read_csv(path))
 
 
-def load_edgedata(edgedata_file: Path, edge_ids: Optional[List[str]] = None) -> pd.DataFrame:
+def load_edgedata(
+    edgedata_file: Path, edge_ids: Optional[List[str]] = None
+) -> pd.DataFrame:
     """
     Parses a SUMO edgeData dump into one row per (edge, interval): density
     (veh/km), flow (veh/h, derived from the `entered` vehicle count over
@@ -73,14 +75,20 @@ def load_edgedata(edgedata_file: Path, edge_ids: Optional[List[str]] = None) -> 
             if edge_ids is not None and eid not in edge_ids:
                 continue
             entered = edge.get("entered", "0")
-            rows.append({
-                "edge_id": eid,
-                "begin": begin,
-                "end": end,
-                "density": float(edge.get("density", "nan")),
-                "flow_veh_h": (float(entered) / duration_h) if duration_h > 0 else float("nan"),
-                "speed": float(edge.get("speed", "nan")),
-            })
+            rows.append(
+                {
+                    "edge_id": eid,
+                    "begin": begin,
+                    "end": end,
+                    "density": float(edge.get("density", "nan")),
+                    "flow_veh_h": (
+                        (float(entered) / duration_h)
+                        if duration_h > 0
+                        else float("nan")
+                    ),
+                    "speed": float(edge.get("speed", "nan")),
+                }
+            )
     return pd.DataFrame(rows)
 
 
@@ -95,7 +103,9 @@ def compute_geh(sim_flow: float, real_flow: float) -> float:
     return float(np.sqrt(2 * (sim_flow - real_flow) ** 2 / total))
 
 
-def hourly_sumo_flow(edgedata_df: pd.DataFrame, edge_id: str) -> Tuple[pd.DataFrame, pd.Series]:
+def hourly_sumo_flow(
+    edgedata_df: pd.DataFrame, edge_id: str
+) -> Tuple[pd.DataFrame, pd.Series]:
     """
     Aggregates fine-grained (e.g. 5-min) SUMO flow samples for one edge
     into one mean value per hour of day (0-23).
@@ -146,7 +156,13 @@ def affinity_by_hour(sim_hourly: pd.Series, real_hourly: pd.Series) -> pd.Series
     )
     return pd.Series(
         {
-            h: max(0.0, min(100.0, 100 * (1 - abs(sim_hourly[h] - real_hourly[h]) / real_hourly[h])))
+            h: max(
+                0.0,
+                min(
+                    100.0,
+                    100 * (1 - abs(sim_hourly[h] - real_hourly[h]) / real_hourly[h]),
+                ),
+            )
             for h in common_hours
         }
     ).sort_index()
@@ -171,11 +187,23 @@ def _sensor_edge_pairs(
 
 
 def plot_geh_bars(geh: pd.Series, sensor_label: str, out_path: Path) -> None:
-    colors = ["red" if v > GEH_BAD else "gold" if v > GEH_OK else "green" for v in geh.values]
+    colors = [
+        "red" if v > GEH_BAD else "gold" if v > GEH_OK else "green" for v in geh.values
+    ]
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.bar(geh.index, geh.values, color=colors, edgecolor="black")
-    ax.axhline(GEH_OK, color="red", linestyle="--", label=f"Soglia di Validazione (GEH = {GEH_OK:.0f})")
-    ax.axhline(GEH_BAD, color="darkred", linestyle=":", label=f"Errore Grave (GEH = {GEH_BAD:.0f})")
+    ax.axhline(
+        GEH_OK,
+        color="red",
+        linestyle="--",
+        label=f"Soglia di Validazione (GEH = {GEH_OK:.0f})",
+    )
+    ax.axhline(
+        GEH_BAD,
+        color="darkred",
+        linestyle=":",
+        label=f"Errore Grave (GEH = {GEH_BAD:.0f})",
+    )
     ax.set_xlabel("Time (h)")
     ax.set_ylabel("GEH Index")
     ax.set_title(f"GEH index - Sensor {sensor_label}")
@@ -190,7 +218,9 @@ def plot_flow_comparison(
     sim_samples: pd.DataFrame, real_hourly: pd.Series, sensor_label: str, out_path: Path
 ) -> None:
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.scatter(sim_samples["hour"], sim_samples["flow_veh_h"], label="SUMO Flow", alpha=0.6)
+    ax.scatter(
+        sim_samples["hour"], sim_samples["flow_veh_h"], label="SUMO Flow", alpha=0.6
+    )
     ax.scatter(real_hourly.index, real_hourly.values, label="Real Flow", color="orange")
     ax.set_xlabel("Time (h)")
     ax.set_ylabel("flow")
@@ -226,18 +256,23 @@ def plot_geh_grid(
     filename_prefix: str = "geh_grid",
     max_per_page: int = DEFAULT_MAX_PER_PAGE,
 ) -> List[Path]:
-    
+
     if not sens_edge_pairs:
         raise ValueError("Nessuna coppia sensore/edge da plottare.")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     written_paths = []
-    for page_idx, page_pairs in enumerate(_grid_pages(sens_edge_pairs, max_per_page), start=1):
+    for page_idx, page_pairs in enumerate(
+        _grid_pages(sens_edge_pairs, max_per_page), start=1
+    ):
         n_cols = math.ceil(len(page_pairs) / 2)
         fig, axs = plt.subplots(
-            2, n_cols,
+            2,
+            n_cols,
             figsize=(WIDTH_PER_SUBPLOT * n_cols, HEIGHT_PER_SUBPLOT * 2),
-            constrained_layout=True, squeeze=False, sharex=True,
+            constrained_layout=True,
+            squeeze=False,
+            sharex=True,
         )
         axs_flat = axs.flatten()
 
@@ -246,7 +281,10 @@ def plot_geh_grid(
             real_hourly = hourly_real_flow(sensor_df, cod_sens)
             geh = geh_by_hour(sim_hourly, real_hourly)
 
-            colors = ["red" if v > GEH_BAD else "gold" if v > GEH_OK else "green" for v in geh.values]
+            colors = [
+                "red" if v > GEH_BAD else "gold" if v > GEH_OK else "green"
+                for v in geh.values
+            ]
             ax.bar(geh.index, geh.values, color=colors, edgecolor="black")
             ax.axhline(GEH_OK, color="red", linestyle="--", linewidth=1)
             ax.axhline(GEH_BAD, color="darkred", linestyle=":", linewidth=1)
@@ -255,14 +293,28 @@ def plot_geh_grid(
             ax.set_title(f"Sensor {cod_sens} ({edge_id})", fontsize=10)
             ax.set_xticks(range(0, 24, 4))
 
-        for ax in axs_flat[len(page_pairs):]:
+        for ax in axs_flat[len(page_pairs) :]:
             ax.set_visible(False)
 
         handles = [
-            plt.Line2D([0], [0], color="red", linestyle="--", label=f"Soglia validazione (GEH={GEH_OK:.0f})"),
-            plt.Line2D([0], [0], color="darkred", linestyle=":", label=f"Errore grave (GEH={GEH_BAD:.0f})"),
+            plt.Line2D(
+                [0],
+                [0],
+                color="red",
+                linestyle="--",
+                label=f"Soglia validazione (GEH={GEH_OK:.0f})",
+            ),
+            plt.Line2D(
+                [0],
+                [0],
+                color="darkred",
+                linestyle=":",
+                label=f"Errore grave (GEH={GEH_BAD:.0f})",
+            ),
         ]
-        fig.legend(handles=handles, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 1.05))
+        fig.legend(
+            handles=handles, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 1.05)
+        )
 
         out_path = out_dir / f"{filename_prefix}_page{page_idx}.png"
         fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -270,6 +322,7 @@ def plot_geh_grid(
         written_paths.append(out_path)
 
     return written_paths
+
 
 def plot_flows_grid(
     sens_edge_pairs: List[Tuple[int, str]],
@@ -286,12 +339,17 @@ def plot_flows_grid(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     written_paths = []
-    for page_idx, page_pairs in enumerate(_grid_pages(sens_edge_pairs, max_per_page), start=1):
+    for page_idx, page_pairs in enumerate(
+        _grid_pages(sens_edge_pairs, max_per_page), start=1
+    ):
         n_cols = math.ceil(len(page_pairs) / 2)
         fig, axs = plt.subplots(
-            2, n_cols,
+            2,
+            n_cols,
             figsize=(WIDTH_PER_SUBPLOT * n_cols, HEIGHT_PER_SUBPLOT * 2),
-            constrained_layout=True, squeeze=False, sharex=True,
+            constrained_layout=True,
+            squeeze=False,
+            sharex=True,
         )
         axs_flat = axs.flatten()
 
@@ -299,11 +357,26 @@ def plot_flows_grid(
             sim_samples, _ = hourly_sumo_flow(edgedata_df, edge_id)
             real_samples = real_samples_by_hour(sensor_df, cod_sens)
 
-            sim_agg = sim_samples.groupby("hour")["flow_veh_h"].agg(["mean", "std", "min", "max"])
-            real_agg = real_samples.groupby("hour_int")["PASTA_count"].agg(["mean", "std", "min", "max"])
+            sim_agg = sim_samples.groupby("hour")["flow_veh_h"].agg(
+                ["mean", "std", "min", "max"]
+            )
+            real_agg = real_samples.groupby("hour_int")["PASTA_count"].agg(
+                ["mean", "std", "min", "max"]
+            )
 
-            for agg, color, label in [(sim_agg, "tab:blue", "SUMO"), (real_agg, "orange", "Real")]:
-                ax.plot(agg.index, agg["mean"], color=color, marker="o", markersize=3, linewidth=1, label=f"{label} Flow")
+            for agg, color, label in [
+                (sim_agg, "tab:blue", "SUMO"),
+                (real_agg, "orange", "Real"),
+            ]:
+                ax.plot(
+                    agg.index,
+                    agg["mean"],
+                    color=color,
+                    marker="o",
+                    markersize=3,
+                    linewidth=1,
+                    label=f"{label} Flow",
+                )
                 if band == "std":
                     lower = agg["mean"] - agg["std"].fillna(0)
                     upper = agg["mean"] + agg["std"].fillna(0)
@@ -315,14 +388,24 @@ def plot_flows_grid(
             ax.set_ylabel("flow")
             ax.set_title(f"Sensor {cod_sens} ({edge_id})", fontsize=10)
 
-        for ax in axs_flat[len(page_pairs):]:
+        for ax in axs_flat[len(page_pairs) :]:
             ax.set_visible(False)
 
         handles = [
-            plt.Line2D([0], [0], color="tab:blue", marker="o", label="SUMO Flow (media ± banda)"),
-            plt.Line2D([0], [0], color="orange", marker="o", label="Real Flow (media ± banda)"),
+            plt.Line2D(
+                [0],
+                [0],
+                color="tab:blue",
+                marker="o",
+                label="SUMO Flow (media ± banda)",
+            ),
+            plt.Line2D(
+                [0], [0], color="orange", marker="o", label="Real Flow (media ± banda)"
+            ),
         ]
-        fig.legend(handles=handles, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 1.05))
+        fig.legend(
+            handles=handles, loc="upper center", ncol=2, bbox_to_anchor=(0.5, 1.05)
+        )
 
         out_path = out_dir / f"{filename_prefix}_page{page_idx}.png"
         fig.savefig(out_path, dpi=150, bbox_inches="tight")
@@ -330,6 +413,7 @@ def plot_flows_grid(
         written_paths.append(out_path)
 
     return written_paths
+
 
 def validate_edge_against_sensor(
     edgedata_df: pd.DataFrame,
@@ -348,8 +432,48 @@ def validate_edge_against_sensor(
     geh = geh_by_hour(sim_hourly, real_hourly)
 
     plot_geh_bars(geh, str(cod_sens), out_dir / f"geh_{edge_id}.png")
-    plot_flow_comparison(sim_samples, real_hourly, str(cod_sens), out_dir / f"flow_{edge_id}.png")
+    plot_flow_comparison(
+        sim_samples, real_hourly, str(cod_sens), out_dir / f"flow_{edge_id}.png"
+    )
     return geh
+
+
+def plot_geh_map(summary: pd.DataFrame, out_path: Path) -> None:
+    """Mean GEH of each sensor, drawn at the middle of its edge."""
+    edges = edge_geometries()
+    mean_geh = summary.groupby(["Cod_sens", "edge_id"])["geh"].mean().reset_index()
+    mean_geh = mean_geh[mean_geh["edge_id"].isin(edges.index)]
+    points = edges.loc[mean_geh["edge_id"]].geometry.interpolate(0.5, normalized=True)
+
+    fig, ax = plt.subplots(figsize=(14, 14), constrained_layout=True)
+    edges.plot(ax=ax, color="lightgrey", linewidth=0.5, zorder=1)
+    sc = ax.scatter(
+        points.x,
+        points.y,
+        c=mean_geh["geh"],
+        cmap="RdYlGn_r",
+        vmin=0,
+        vmax=15,
+        s=90,
+        edgecolors="black",
+        zorder=3,
+    )
+    for x, y, cod_sens in zip(points.x, points.y, mean_geh["Cod_sens"]):
+        ax.annotate(
+            str(cod_sens),
+            (x, y),
+            xytext=(0, 6),
+            textcoords="offset points",
+            fontsize=7,
+            ha="center",
+        )
+    fig.colorbar(sc, ax=ax, shrink=0.5, label="mean GEH")
+    cx.add_basemap(ax, source=cx.providers.CartoDB.Positron, zorder=0)
+    ax.set_title("Mean GEH per sensor", fontsize=16, fontweight="bold")
+    ax.set_axis_off()
+    fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
 
 def plot_affinity_distribution(per_sensor_affinity: pd.Series, out_path: Path) -> dict:
     sorted_aff = per_sensor_affinity.sort_values(ascending=False).reset_index(drop=True)
@@ -357,8 +481,8 @@ def plot_affinity_distribution(per_sensor_affinity: pd.Series, out_path: Path) -
     if n == 0:
         raise ValueError("No sensor to plot.")
 
-    percentile = [100 * i / n for i in range(n)] + [100]          # chiude fino a 100%
-    values = list(sorted_aff.values) + [sorted_aff.values[-1]]     # ripete l'ultimo valore
+    percentile = [100 * i / n for i in range(n)] + [100]  # chiude fino a 100%
+    values = list(sorted_aff.values) + [sorted_aff.values[-1]]  # ripete l'ultimo valore
 
     fig, ax = plt.subplots(figsize=(8, 5))
     ax.step(percentile, values, where="post", color="tab:blue", linewidth=1.5)
@@ -380,7 +504,11 @@ def plot_affinity_distribution(per_sensor_affinity: pd.Series, out_path: Path) -
 
 
 def validate_all_sensors(
-    edgedata_df: pd.DataFrame, sensor_df: pd.DataFrame, lookup_path: Path, out_dir: Path, cv_threshold: float = None,
+    edgedata_df: pd.DataFrame,
+    sensor_df: pd.DataFrame,
+    lookup_path: Path,
+    out_dir: Path,
+    cv_threshold: float = None,
 ) -> pd.DataFrame:
     """
     Validate each edge-sensor pair by plotting GEH, flows per edge, affinity index.
@@ -388,15 +516,21 @@ def validate_all_sensors(
     out_dir.mkdir(parents=True, exist_ok=True)
     pairs = _sensor_edge_pairs(edgedata_df, sensor_df, lookup_path)
     if not pairs:
-        click.echo("[sensor_validation] no validated edges (no edge-sensor matches with available data.)")
+        click.echo(
+            "[sensor_validation] no validated edges (no edge-sensor matches with available data.)"
+        )
         return pd.DataFrame()
 
     rows = []
     affinity_per_sensor = {}
     for cod_sens, edge_id in pairs:
-        geh = validate_edge_against_sensor(edgedata_df, edge_id, sensor_df, cod_sens, out_dir)
+        geh = validate_edge_against_sensor(
+            edgedata_df, edge_id, sensor_df, cod_sens, out_dir
+        )
         for hour, value in geh.items():
-            rows.append({"edge_id": edge_id, "Cod_sens": cod_sens, "hour": hour, "geh": value})
+            rows.append(
+                {"edge_id": edge_id, "Cod_sens": cod_sens, "hour": hour, "geh": value}
+            )
 
         _, sim_hourly = hourly_sumo_flow(edgedata_df, edge_id)
         real_hourly = hourly_real_flow(sensor_df, cod_sens)
@@ -434,6 +568,9 @@ def validate_all_sensors(
     flow_grid_paths = plot_flows_grid(pairs, edgedata_df, sensor_df, out_dir)
     click.echo(f"\nFlows grid saved in: {', '.join(str(p) for p in flow_grid_paths)}")
 
+    plot_geh_map(summary, out_dir / "geh_map.png")
+    click.echo(f"\nGEH map saved in: {out_dir / 'geh_map.png'}")
+
     if affinity_per_sensor:
         affinity_df = (
             pd.DataFrame.from_dict(affinity_per_sensor, orient="index")
@@ -456,60 +593,131 @@ def validate_all_sensors(
 
         affinity_csv_path = out_dir / "affinity_by_sensor.csv"
         affinity_df.to_csv(affinity_csv_path, index=False)
-        click.echo(
-            f"\naffinity by sensor (n={len(affinity_df)}")
-        
+        click.echo(f"\naffinity by sensor (n={len(affinity_df)}")
+
     return summary
 
 
 @click.command(name="sensor-validation")
-@click.option("--edgedata", "edgedata_path", type=click.Path(exists=True, path_type=Path), required=True, help="edgeData XML")
+@click.option(
+    "--edgedata",
+    "edgedata_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="edgeData XML (or marouter netload).",
+)
+@click.option(
+    "--det-out",
+    "det_out",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    default=None,
+    help="Folder with the det_*.xml outputs, alternative to --edgedata.",
+)
 @click.option("--edge", "edge_id", default=None, help="To validate a single edge.")
-@click.option("--from-sensors", is_flag=True, help="Validate all edges corresponding to a sensor in the lookup file.")
-@click.option("--sensor-data", "sensor_data_path", type=click.Path(exists=True, path_type=Path), default=None, help="CSV containing real data, output of prepare_pasta_data().")
-@click.option("--pasta-anagraphics", "anagraphics_path", type=click.Path(exists=True, path_type=Path), default=None, help="CSV of PASTA sensors anagraphics. To be used with --pasta-flows.")
-@click.option("--pasta-flows", "flows_path", type=click.Path(exists=True, path_type=Path), default=None, help="CSV of real registered flows from PASTA. To be used --pasta-anagraphics.")
-@click.option("--out-dir", type=click.Path(path_type=Path), default=None, help="Personalised output path. Default: cfg.IMAGES/sensor_validation.")
-
-
-def sensor_validation_cli(edgedata_path, edge_id, from_sensors, sensor_data_path, anagraphics_path, flows_path, out_dir):
-    """Valida l'output MESO contro i dati reali dei sensori PASTA (statistica GEH)."""
+@click.option(
+    "--from-sensors",
+    is_flag=True,
+    help="Validate all edges corresponding to a sensor in the lookup file.",
+)
+@click.option(
+    "--sensor-data",
+    "sensor_data_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="CSV containing real data, output of prepare_pasta_data().",
+)
+@click.option(
+    "--pasta-anagraphics",
+    "anagraphics_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="CSV of PASTA sensors anagraphics. To be used with --pasta-flows.",
+)
+@click.option(
+    "--pasta-flows",
+    "flows_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="CSV of real registered flows from PASTA. To be used --pasta-anagraphics.",
+)
+@click.option(
+    "--out-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Personalised output path. Default: cfg.IMAGES/sensor_validation.",
+)
+def sensor_validation_cli(
+    edgedata_path,
+    det_out,
+    edge_id,
+    from_sensors,
+    sensor_data_path,
+    anagraphics_path,
+    flows_path,
+    out_dir,
+):
+    """Valida l'output della simulazione contro i dati reali dei sensori PASTA (GEH, affinity)."""
     import dtsumo.inputs.config as cfg
     import pandera.errors
 
+    if bool(edgedata_path) == bool(det_out):
+        raise click.UsageError("Use either --edgedata or --det-out.")
     if not edge_id and not from_sensors:
         raise click.UsageError("Use either --edge <id> or --from-sensors.")
     if sensor_data_path and (anagraphics_path or flows_path):
-        raise click.UsageError("--sensor-data cannot be used with --pasta-anagraphics/--pasta-flows.")
+        raise click.UsageError(
+            "--sensor-data cannot be used with --pasta-anagraphics/--pasta-flows."
+        )
     if bool(anagraphics_path) != bool(flows_path):
-        raise click.UsageError("--pasta-anagraphics and --pasta-flows have to be used together.")
+        raise click.UsageError(
+            "--pasta-anagraphics and --pasta-flows have to be used together."
+        )
     if not (sensor_data_path or (anagraphics_path and flows_path)):
-        raise click.UsageError("Need sensor data: --sensor-data or --pasta-anagraphics/--pasta-flows.")
+        raise click.UsageError(
+            "Need sensor data: --sensor-data or --pasta-anagraphics/--pasta-flows."
+        )
 
     out_dir = out_dir or (cfg.IMAGES / "sensor_validation")
 
     try:
         sensor_df = (
-            load_validated_sensor_data(sensor_data_path) if sensor_data_path
-            else prepare_pasta_data(pd.read_csv(anagraphics_path), pd.read_csv(flows_path))
+            load_validated_sensor_data(sensor_data_path)
+            if sensor_data_path
+            else prepare_pasta_data(
+                pd.read_csv(anagraphics_path), pd.read_csv(flows_path)
+            )
         )
     except (pandera.errors.SchemaError, pandera.errors.SchemaErrors) as e:
         raise click.UsageError(f"ERROR: data should be in the correct format:\n{e}")
 
-    edgedata_df = load_edgedata(edgedata_path)
+    edgedata_df = (
+        load_edgedata(edgedata_path) if edgedata_path else load_all_detectors(det_out)
+    )
 
     if from_sensors:
-        validate_all_sensors(edgedata_df, sensor_df, cfg.SENS_LANE_LOOKUP, out_dir, #cv_threshold=cv_threshold
-                            )
+        validate_all_sensors(
+            edgedata_df,
+            sensor_df,
+            cfg.SENS_LANE_LOOKUP,
+            out_dir,  # cv_threshold=cv_threshold
+        )
         return
 
     lookup = pd.read_csv(cfg.SENS_LANE_LOOKUP)
-    sensor_ids = lookup.loc[lookup["id_edge"].astype(str) == str(edge_id), "Cod_sens"].unique()
+    sensor_ids = lookup.loc[
+        lookup["id_edge"].astype(str) == str(edge_id), "Cod_sens"
+    ].unique()
     if len(sensor_ids) == 0:
-        raise click.UsageError(f"ERROR: no sensor found for edge {edge_id} in {cfg.SENS_LANE_LOOKUP}.")
+        raise click.UsageError(
+            f"ERROR: no sensor found for edge {edge_id} in {cfg.SENS_LANE_LOOKUP}."
+        )
 
-    geh = validate_edge_against_sensor(edgedata_df, str(edge_id), sensor_df, sensor_ids[0], out_dir)
-    click.echo(f"[sensor_validation] {edge_id} (sensor {sensor_ids[0]}): plot saved in {out_dir}")
+    geh = validate_edge_against_sensor(
+        edgedata_df, str(edge_id), sensor_df, sensor_ids[0], out_dir
+    )
+    click.echo(
+        f"[sensor_validation] {edge_id} (sensor {sensor_ids[0]}): plot saved in {out_dir}"
+    )
     click.echo(geh.to_string())
 
 
