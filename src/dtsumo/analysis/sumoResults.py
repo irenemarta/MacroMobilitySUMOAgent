@@ -53,8 +53,6 @@ def parse_sumo_summary(file_path: Path) -> pd.DataFrame:
 
 def datetime_format(df_summary: pd.DataFrame) -> pd.DataFrame:
     df_summary["time"] = pd.to_datetime(df_summary["time"], unit="s")
-    df_summary["meanWaitingTime_dt"] = pd.to_datetime(df_summary["meanWaitingTime"], unit="s")
-    df_summary["meanTravelTime_dt"] = pd.to_datetime(df_summary["meanTravelTime"], unit="s")
     return df_summary
 
 
@@ -71,6 +69,8 @@ def _style(ax, title: str, ylabel: str):
     ax.grid(True, color="#DDDDDD", linewidth=0.6, linestyle="--")
     for spine in ax.spines.values():
         spine.set_edgecolor("#CCCCCC")
+    # same 00:00-24:00 axis on every panel (no autoscale margins before midnight)
+    ax.set_xlim(pd.to_datetime(0, unit="s"), pd.to_datetime(24 * 3600, unit="s"))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
     ax.xaxis.set_major_locator(mdates.HourLocator(interval=2))
     plt.setp(ax.xaxis.get_majorticklabels(), rotation=30, ha="right")
@@ -94,17 +94,17 @@ def _legend(ax, loc="upper left"):
 def _compute_hourly(df: pd.DataFrame) -> pd.DataFrame:
     tmp = df.copy()
     tmp["hour"] = tmp["time"].dt.floor("h")
-    inserted = (
-        tmp.groupby("hour")["inserted"]
-        .agg(lambda s: s.iloc[-1] - s.iloc[0])
-        .rename("inserted_per_hour")
-    )
+    # cumulative inserted at the end of each hour minus the previous hour
+    cumulative = tmp.groupby("hour")["inserted"].max()
+    inserted = cumulative.diff().fillna(cumulative.iloc[0]).rename("inserted_per_hour")
     waiting_running = (
         tmp.groupby("hour")[["waiting", "running"]]
         .mean()
         .rename(columns={"waiting": "waiting_per_hour", "running": "running_per_hour"})
     )
-    return pd.concat([inserted, waiting_running], axis=1).reset_index()
+    hourly = pd.concat([inserted, waiting_running], axis=1).reset_index()
+    hourly["hour"] += pd.Timedelta(minutes=30)  # plotted at the middle of its hour: 23:30 is 23:00-24:00
+    return hourly
 
 
 def plot_summary(df: pd.DataFrame, title: str, windows: List[Tuple[int, int]], out_path: Path):
@@ -132,17 +132,21 @@ def plot_summary(df: pd.DataFrame, title: str, windows: List[Tuple[int, int]], o
     ax2.plot(df["time"], df["meanSpeedRelative"], color=COLORS["meanSpeedRelative"], lw=1.1, alpha=0.6, label="AVG Rel Speed")
     _shade_load_windows(ax, windows)
     _style(ax, "Average Speed & Relative Speed", "Speed (m/s)")
-    ax2.set_ylabel("Ratio w.r.t. speed limit", fontsize=8)
+    # the twin axis is drawn on top: same frame, labels and legend as the other panels
+    ax2.set_ylabel("Ratio w.r.t. speed limit", fontsize=10)
+    ax2.tick_params(labelsize=10)
+    for spine in ax2.spines.values():
+        spine.set_edgecolor("#CCCCCC")
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = ax2.get_legend_handles_labels()
-    ax2.legend(h1 + h2, l1 + l2, loc="lower right", fontsize=7, framealpha=0.6)
+    ax2.legend(h1 + h2, l1 + l2, loc="lower right", fontsize=9, framealpha=0.6, facecolor="white", edgecolor="#BBBBBB")
 
     ax = axs[1][1]
-    ax.plot(df["time"], df["meanWaitingTime_dt"], color=COLORS["meanWaitingTime"], lw=1.5, label="AVG waiting time")
-    ax.plot(df["time"], df["meanTravelTime_dt"], color=COLORS["meanTravelTime"], lw=1.5, label="AVG travel time")
+    # plain seconds: these means stay well below one minute, so an HH:MM axis shows only 00:00 / 00:01
+    ax.plot(df["time"], df["meanWaitingTime"], color=COLORS["meanWaitingTime"], lw=1.5, label="AVG waiting time")
+    ax.plot(df["time"], df["meanTravelTime"], color=COLORS["meanTravelTime"], lw=1.5, label="AVG travel time")
     _shade_load_windows(ax, windows)
-    _style(ax, "Running & Waiting Times", "Time")
-    ax.yaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    _style(ax, "Running & Waiting Times", "Time (s)")
     _legend(ax)
 
     # loaded = vehicles read from the route files, also with future departures

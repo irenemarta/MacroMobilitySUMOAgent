@@ -10,6 +10,7 @@ from colorama import Fore, init
 
 import numpy as np
 import pandas as pd
+import dtsumo.inputs.config as cfg
 from dtsumo.operations.connections import _get_pasta_data
 
 init(autoreset=True)
@@ -56,7 +57,14 @@ def _scale_factor(data: Path = None) -> tuple[Dict[int, float], float]:
             raise ValueError(Fore.RED + "ISTC_URL not in .env file")
         
         _, flows = _get_pasta_data(connection_strings["ista"], connection_strings["istc"])
-        
+
+    # hourly profile from the case-study sensors only (the ones matched to network edges):
+    # the whole-city profile has a much steeper morning ramp and does not fit this area
+    case_study = set(pd.read_csv(cfg.SENS_LANE_LOOKUP)["Cod_sens"].astype(str))
+    flows = flows[flows["Cod_sens"].astype(str).isin(case_study)]
+    if flows.empty:
+        raise ValueError(Fore.RED + f"no PASTA counts for the sensors in {cfg.SENS_LANE_LOOKUP}")
+
     day_hour_flows = flows.groupby(["hour", "daytime"])["count_all"].sum()
     hourly_mean_counts = day_hour_flows.groupby("hour").mean()
     peak = hourly_mean_counts.max()
