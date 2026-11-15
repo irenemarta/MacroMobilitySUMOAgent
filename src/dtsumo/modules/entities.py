@@ -10,7 +10,7 @@ from typing import TypedDict, Optional, Union, List, Dict, Tuple
 import pandera.pandas as pa
 from pandera.typing import Series
 from numpy import float64
-import src.dtsumo.inputs.config as cfg
+import dtsumo.inputs.config as cfg
 from dtsumo.helpers import TLS_OFF_SCENARIO, ensure_tls_off_additional
 
 

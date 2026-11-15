@@ -23,6 +23,7 @@ from dtsumo.tools.detectors import edges_as_lanes, generate_all_detectors
 from dtsumo.operations.filtering import scale_od_matrices
 from dtsumo.operations.marouter_cycle import (
     DEFAULT_DAY_SCALE,
+    TIME_TO_TELEPORT,
     build_sumocfg_day,
     run_assignement_cycle_day_iterative,
 )
@@ -148,6 +149,7 @@ def run_scenario(
         "disturbances": dist,
         "sumo_version": sumo_version,
         "sumo_args": os.getenv("DTSUMO_SUMO_ARGS", ""),
+        "time_to_teleport": TIME_TO_TELEPORT,
     }
     _save_json_info_(info, work_dir)
 

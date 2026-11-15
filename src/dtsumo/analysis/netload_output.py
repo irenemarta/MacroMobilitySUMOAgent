@@ -68,7 +68,7 @@ def saturated_edges(df: pd.DataFrame, net, threshold: float = 100) -> pd.DataFra
 
 
 def teleports_from_log(log_path: Path) -> Tuple[Counter, Counter]:
-    """Teleport events per vehicle and per edge, read from the SUMO log."""
+    """Teleport events per vehicle and per edge (from the SUMO log)."""
     by_vehicle, by_edge = Counter(), Counter()
     with open(log_path, encoding="utf-8", errors="ignore") as f:
         for line in f:
@@ -105,7 +105,7 @@ def route_alternatives(rou_path: Path) -> None:
 
 
 def _round_order(path: Path):
-    # netload_r10 after netload_r9
+    # netload_r2 after netload_r1 and so on
     return [int(n) for n in re.findall(r"\d+", path.stem)]
 
 

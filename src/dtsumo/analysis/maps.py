@@ -1,19 +1,16 @@
 """
-Per-edge values drawn on the network over an OSM basemap.
+Heatmpas: per-edge values drawn on the network over an OSM basemap.
 Geometries come from the parsed .edg.xml (lon,lat shapes), one line per edge (its first lane).
-
 Detector heatmap (mean flow or speed per edge over the whole run):
-
-    uv run python -m dtsumo.analysis.maps --det-out DIR --title "MA with TLS - DAY" [--metric speed]
+    uv run python -m dtsumo.analysis.maps --det-out DIR --title "MA with TLS - DAY" [--metric speed] [--from 08:00 --to 09:00]
 """
-
-from pathlib import Path
 
 import click
 import contextily as cx
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import pandas as pd
+from pathlib import Path
 from shapely.geometry import LineString
 
 import dtsumo.inputs.config as cfg
@@ -65,12 +62,21 @@ def plot_edge_map(
 @click.option("--det-out", "det_out", type=click.Path(exists=True, file_okay=False, path_type=Path), required=True, help="Folder with det_*.xml outputs.")
 @click.option("--metric", type=click.Choice(["flow", "speed"]), default="flow", show_default=True)
 @click.option("--title", required=True)
+@click.option("--from", "from_", help="Start of the time window, HH:MM (with --to). Default: whole run.")
+@click.option("--to", help="End of the time window, HH:MM (with --from).")
 @click.option("--out-dir", type=click.Path(path_type=Path), default=None, help="Default: cfg.IMAGES/maps.")
-def heatmap_cli(det_out, metric, title, out_dir):
+def heatmap_cli(det_out, metric, title, from_, to, out_dir):
+    if bool(from_) != bool(to):
+        raise click.UsageError("give both --from and --to, or neither")
     out_dir = out_dir or (cfg.IMAGES / "maps")
     out_dir.mkdir(parents=True, exist_ok=True)
-
+ 
     df = load_all_detectors(det_out)
+    if from_:
+        begin, end = (int(t[:2]) * 3600 + int(t[3:]) * 60 for t in (from_, to))
+        df = df[(df["begin"] >= begin) & (df["end"] <= end)]
+        if df.empty:
+            raise click.ClickException(f"no detector interval inside {from_}-{to}")
     column = "flow_veh_h" if metric == "flow" else "speed"
     values = df.groupby("edge_id")[column].mean()
     if metric == "flow":
@@ -81,7 +87,3 @@ def heatmap_cli(det_out, metric, title, out_dir):
     out_path = out_dir / f"heatmap_{metric}_{title.replace(' ', '_')}.png"
     plot_edge_map(values, f"Heatmap {metric} - {title}", out_path, **kwargs)
     click.echo(f"Heatmap saved in {out_path}")
-
-
-if __name__ == "__main__":
-    heatmap_cli()

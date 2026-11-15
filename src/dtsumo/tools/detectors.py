@@ -191,6 +191,9 @@ def _get_det_output_data(file):
             df[col] = 0.0
     df[[count_col, "flow"]] = df[[count_col, "flow"]].fillna(0)
     df["nVehEntered"] = df[count_col]
+    df["meso"] = count_col == "entered"
+    if "speed" not in df.columns:  # no vehicle in any interval: speed is unknown, not 0
+        df["speed"] = float("nan")
 
     return df.assign(
         time_dt=lambda x: abs(x["begin"] - x["end"]),
@@ -211,14 +214,16 @@ def load_all_detectors(det_out_dir: Path) -> pd.DataFrame:
     for file in Path(det_out_dir).glob("det_*.xml"):
         df = _get_det_output_data(file)
         df["edge_id"] = file.stem.replace("det_", "").rsplit("_", 1)[0]
-        dfs.append(df[["edge_id", "begin", "end", "nVehEntered", "speed"]])
+        dfs.append(df[["edge_id", "begin", "end", "nVehEntered", "speed", "meso"]])
     if not dfs:
         raise FileNotFoundError(f"No det_*.xml files in {det_out_dir}")
 
     df = pd.concat(dfs, ignore_index=True)
     df["speed"] = df["speed"].where(df["speed"] >= 0)  # -1 = no vehicle in the interval
+    # meso has no lanes: every lane detector counts the whole edge, so lanes must not be summed
+    how = "max" if df["meso"].all() else "sum"
     df = df.groupby(["edge_id", "begin", "end"], as_index=False).agg(
-        entered=("nVehEntered", "sum"), speed=("speed", "mean")
+        entered=("nVehEntered", how), speed=("speed", "mean")
     )
     df["flow_veh_h"] = df["entered"] / ((df["end"] - df["begin"]) / 3600)
     return df

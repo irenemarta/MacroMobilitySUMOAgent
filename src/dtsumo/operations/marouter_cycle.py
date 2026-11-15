@@ -19,6 +19,7 @@ from colorama import init, Fore
 init(autoreset=True)
 
 DEFAULT_DAY_SCALE = 1.0
+TIME_TO_TELEPORT = 150  # s, every sumo run of the pipeline (rounds and final): SUMO default is 300
 
 TLS_PENALTY_BY_VARIANT = {
     "no_TLS": 0.0,
@@ -228,7 +229,7 @@ def build_final_sumocfg(
         config_name=f"francia_peschiera_MAROUTER_{scenario[3:]}_{period}.sumocfg",
         meso=True,
         setting=cfg.VIEW,
-        teleport="300",
+        teleport=TIME_TO_TELEPORT,
     ).build(
         method="marouter",
         taz=taz_file,
@@ -264,7 +265,7 @@ def build_sumocfg_day(
         output_cfg=cfg.CFG_DIR,
         output_sumo=output_sumo or cfg.SIM_OUT[scenario]["DAY"],
         config_name=config_name,
-        teleport="300",
+        teleport=TIME_TO_TELEPORT,
         meso=True,
         setting=cfg.VIEW,
     ).build(
@@ -377,7 +378,7 @@ def run_assignement_cycle_day_iterative(
             output_cfg=cfg.CFG_DIR,
             output_sumo=output_sumo,
             config_name=cfg_name,
-            teleport="300",
+            teleport=TIME_TO_TELEPORT,
             meso=True,
             setting=cfg.VIEW,
         ).build(

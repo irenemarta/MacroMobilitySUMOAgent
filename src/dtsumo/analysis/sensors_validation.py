@@ -13,10 +13,12 @@ from typing import List, Tuple, Optional
 import xml.etree.ElementTree as ET
 
 import click
+import contextily as cx
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from dtsumo.analysis.maps import edge_geometries
 from dtsumo.analysis.sensors import DATE_FORMAT, pasta_db_merge, standardize_datetime
 from dtsumo.modules.entities import DataFrameSchemaPasta
 from dtsumo.tools.detectors import load_all_detectors
@@ -54,7 +56,18 @@ def validate_sensor_df(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_validated_sensor_data(path: Path) -> pd.DataFrame:
-    return validate_sensor_df(pd.read_csv(path))
+    df = pd.read_csv(path)
+    if "count_all" in df.columns and "sezione" not in df.columns:
+        # raw PASTA counts (flows*.csv): join the sensor registry, as prepare_pasta_data() does
+        import dtsumo.inputs.config as cfg
+
+        anagraphics = cfg.SENS_DATA_FOLDER / "anagraphics_fp.csv"
+        if not anagraphics.exists():
+            raise click.UsageError(
+                f"{path} has raw counts only: use --pasta-anagraphics <registry> --pasta-flows {path}"
+            )
+        return prepare_pasta_data(pd.read_csv(anagraphics), df)
+    return validate_sensor_df(df)
 
 
 def load_edgedata(
