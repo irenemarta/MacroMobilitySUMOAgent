@@ -2,6 +2,7 @@
 Compares a what-if run with its baseline (same seed), edge by edge and globally.
 
         uv run python -m dtsumo.analysis.compare <scenario> --baseline <baseline> [--from HH:MM --to HH:MM] [--json]
+        uv run python -m dtsumo.analysis.compare <scenario> --baseline <baseline> --seeds "36 42 123" [--from --to] [--csv f]
 
 <scenario> and <baseline> are run.py scenario ids (e.g. "telesio_closure_s36", "baseline_s36"
 or, from the agent, "<id>_r3" and "baseline_r3"). Both runs must exist for the same seed
@@ -13,6 +14,9 @@ or, from the agent, "<id>_r3" and "baseline_r3"). Both runs must exist for the s
 With --from/--to only that time window is compared: edge data intervals inside it (the final
 simulation dumps one every 30 minutes, so the window must start and end on :00 or :30), trips
 that depart inside it, teleports that happen inside it.
+With --seeds the comparison is paired over several seeds (same id, one run per seed): per-seed
+effect on the mean time loss, median, signs and bootstrap 95% CI of the mean; for the edges the
+same "solid" rule as seed_bootstrap (CI without 0, same sign in every seed, change >= 20%).
 """
 
 import json
@@ -22,17 +26,21 @@ from pathlib import Path
 from typing import Optional, Tuple
 
 import click
+import numpy as np
+import pandas as pd
 
 import dtsumo.inputs.config as cfg
 
 VARIANT = "MA_with_TLS"
 
 
-def run_info(sid: str, variant: str = VARIANT) -> dict:
+def run_info(sid: str, variant: str = VARIANT, seed: Optional[int] = None) -> dict:
+    seed = cfg.SEED if seed is None else seed
     path = (
-        cfg.WORKDIRS[variant]["DAY"]
+        cfg.MAROUTER_WORKDIR
+        / f"{variant}_DAY_seed{seed}"
         / "iterative"
-        / f"closure_{sid}_seed{cfg.SEED}"
+        / f"closure_{sid}_seed{seed}"
         / "scenario_resolved.json"
     )
     if not path.exists():
@@ -124,9 +132,10 @@ def sim_stats(sim_out: Path, scale: float, window: Optional[Tuple[int, int]] = N
     }
 
 def compare_baseline_to_scenario(
-    sid: str, baseline: str, variant: str = VARIANT, window: Optional[Tuple[int, int]] = None
+    sid: str, baseline: str, variant: str = VARIANT, window: Optional[Tuple[int, int]] = None,
+    seed: Optional[int] = None,
 ) -> dict:
-    scen, base = run_info(sid, variant), run_info(baseline, variant)
+    scen, base = run_info(sid, variant, seed), run_info(baseline, variant, seed)
     e_scen = edge_stats(Path(scen["outputs"]["edgedata"]), window)
     e_base = edge_stats(Path(base["outputs"]["edgedata"]), window)
     empty = [0, None, 0.0]
@@ -138,7 +147,8 @@ def compare_baseline_to_scenario(
         "scenario": scen["scenario"],
         "interventions": scen["interventions"],
         "lanes_closed": scen["lanes_closed"],
-        "seed": cfg.SEED,
+        "seed": cfg.SEED if seed is None else seed,
+        "net": base["outputs"].get("net"),
         "edges": edges,
         "globals": {
             "baseline": sim_stats(base["outputs"]["sim_out"], base["scale"], window, base["seed"]),
@@ -147,6 +157,62 @@ def compare_baseline_to_scenario(
         "window": list(window) if window else None,
     }
 
+MIN_CHANGE = 0.20  # same thresholds as seed_bootstrap
+RESAMPLES = 2000
+
+
+def _bootstrap_ci(values: np.ndarray, rng) -> Tuple[float, float]:
+    means = rng.choice(values, size=(RESAMPLES, len(values)), replace=True).mean(axis=1)
+    return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
+
+
+def paired_over_seeds(results: list, min_veh: float, csv_path: Optional[Path] = None) -> None:
+    """results: compare_baseline_to_scenario() of the same scenario, one per seed."""
+    rng = np.random.default_rng(0)
+    g = pd.DataFrame([
+        {"seed": r["seed"],
+        "time_loss_base": r["globals"]["baseline"]["mean_time_loss_s"],
+        "time_loss_scen": r["globals"]["scenario"]["mean_time_loss_s"],
+        "teleports_base": r["globals"]["baseline"]["teleports"],
+        "teleports_scen": r["globals"]["scenario"]["teleports"]}
+        for r in results
+    ])
+    g["effect_s"] = g["time_loss_scen"] - g["time_loss_base"]
+    lo, hi = _bootstrap_ci(g["effect_s"].to_numpy(), rng)
+    print(g.to_string(index=False))
+    print(f"\nmean time loss: median effect {g['effect_s'].median():+.2f} s, mean {g['effect_s'].mean():+.2f} s "
+        f"[{lo:+.2f}, {hi:+.2f}], worse in {(g['effect_s'] > 0).sum()}/{len(g)} seeds")
+
+    net = results[0].get("net")
+    names = {el.get("id"): el.get("name", "") for _, el in ET.iterparse(net)
+            if el.tag == "edge" and el.get("function") != "internal"} if net else {}
+    rows = []
+    for edge in results[0]["edges"]:
+        if not all(edge in r["edges"] for r in results):
+            continue
+        base = np.array([r["edges"][edge]["baseline"][0] for r in results], dtype=float)
+        diff = np.array([r["edges"][edge]["scenario"][0] for r in results], dtype=float) - base
+        if base.mean() < min_veh:
+            continue
+        e_lo, e_hi = _bootstrap_ci(diff, rng)
+        same_sign = int(max((diff > 0).sum(), (diff < 0).sum()))
+        rows.append({"edge": edge, "via": names.get(edge, ""), "baseline_veh": round(base.mean()),
+                    "effect_veh": round(diff.mean()), "ci_low": round(e_lo), "ci_high": round(e_hi),
+                     "effect_pct": round(diff.mean() / base.mean() * 100, 1), "same_sign": f"{same_sign}/{len(diff)}",
+                    "solid": (e_lo > 0 or e_hi < 0) and same_sign == len(diff)
+                              and abs(diff.mean()) >= MIN_CHANGE * base.mean()})
+    edges = pd.DataFrame(rows)
+    solid = edges[edges["solid"]] if len(edges) else edges
+    solid = solid.reindex(solid["effect_veh"].abs().sort_values(ascending=False).index) if len(solid) else solid
+    print(f"\nedges with >= {min_veh:.0f} veh: {len(edges)}, solid effects: {len(solid)}"
+          f" ({len(solid) / max(len(edges), 1) * 100:.1f}%)")
+    if len(solid):
+        print(solid.head(15).to_string(index=False))
+    if csv_path:
+        edges.to_csv(csv_path, index=False)
+        print(f"all edges in {csv_path}")
+
+
 @click.command()
 @click.argument("scenario")
 @click.option("--baseline", required=True)
@@ -154,7 +220,9 @@ def compare_baseline_to_scenario(
 @click.option("--from", "from_", help="Start of the time window, HH:MM (with --to).")
 @click.option("--to", help="End of the time window, HH:MM (with --from).")
 @click.option("--json", "as_json", is_flag=True, help="One JSON line on stdout (for the agent).")
-def cli(scenario, baseline, variant, from_, to, as_json):
+@click.option("--seeds", help='Paired comparison over these seeds, e.g. "36 42 123 2026 99".')
+@click.option("--csv", "csv_path", type=click.Path(path_type=Path), help="With --seeds: all edges to this file.")
+def cli(scenario, baseline, variant, from_, to, as_json, seeds, csv_path):
     if bool(from_) != bool(to):
         raise click.UsageError("give both --from and --to, or neither")
     window = None
@@ -162,6 +230,16 @@ def cli(scenario, baseline, variant, from_, to, as_json):
         window = (_seconds(from_), _seconds(to))
         if not 0 <= window[0] < window[1] <= 24 * 3600:
             raise click.UsageError(f"the window {from_}-{to} must go forward within the day")
+    if seeds:
+        if as_json:
+            raise click.UsageError("--seeds and --json cannot be used together")
+        seed_list = [int(x) for x in seeds.split()]
+        print(f"{scenario} vs {baseline}, seeds {seeds}, window {from_ or '00:00'}-{to or '24:00'}")
+        results = [compare_baseline_to_scenario(scenario, baseline, variant, window, s) for s in seed_list]
+        # same traffic threshold as seed_bootstrap (200 veh/day), scaled to the window
+        min_veh = 200 * ((window[1] - window[0]) / 86400 if window else 1)
+        paired_over_seeds(results, min_veh, csv_path)
+        return
     result = compare_baseline_to_scenario(scenario, baseline, variant, window)
     if as_json:
         print(json.dumps(result, ensure_ascii=False))

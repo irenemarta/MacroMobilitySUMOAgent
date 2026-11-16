@@ -28,7 +28,7 @@ CONTROLLED_TLS = {
 SUMO_CONFIG = [
     "sumo",
     "-c",
-    "/mnt/external1/irene/dtSumo/output/sumo-1.28/config/francia_peschiera_MAROUTER_with_TLS_baseline_DAY_scaled1.0_ltm.sumocfg",
+    "/mnt/external1/irene/dtSumo/output/sumo-1.26-realtls/config/francia_peschiera_MAROUTER_with_TLS_baseline_DAY_scaled1.0_seed36.sumocfg",
     "-e", str(3600*24)
 ]
 

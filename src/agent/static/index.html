@@ -1782,13 +1782,17 @@
         const righe = INDICATORI.map(([k, nome, fmt, verso]) => {
           const g = r.globali[k],
             v = g.variazione_pct;
+          // teletrasporti: differenza assoluta (la percentuale su pochi eventi inganna)
+          const d = v == null ? g.differenza : null;
+          const x = v != null ? v : d;
           const classe =
-            v == null || Math.abs(v) < 0.5
+            x == null || Math.abs(x) < 0.5
               ? ""
-              : v * verso > 0
+              : x * verso > 0
                 ? "meglio"
                 : "peggio";
-          return `<tr><th>${nome}</th><td>${fmt(g.prima)}</td><td>${fmt(g.dopo)}</td><td class="${classe}">${pct(v)}</td></tr>`;
+          const varTesto = v != null ? pct(v) : d != null ? segno(d, nf0) : "";
+          return `<tr><th>${nome}</th><td>${fmt(g.prima)}</td><td>${fmt(g.dopo)}</td><td class="${classe}">${varTesto}</td></tr>`;
         }).join("");
         const sc = r.scartati;
         $("#indicatori").innerHTML =

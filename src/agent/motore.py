@@ -58,6 +58,8 @@ def check_response(scenario):
         return {"ok": True, **run_scenario(scenario, VARIANT, check_only=True)}
     except ScenarioError as e:
         return {"ok": False, "error": str(e)}
+    except Exception as e:  # a malformed scenario from the model must not end the whole turn
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 ### INTERFACE
 def send_scenario(scenario, n_round):
@@ -142,7 +144,8 @@ def simulated_scenarios():
 
 
 def baseline_ok(baseline_id, n_round):
-    return any(i == baseline_id and r == n_round for i, r, _ in simulated_scenarios())
+    # same seed too: compare.py looks for the baseline of the current DTSUMO_SEED
+    return any(i == baseline_id and r == n_round and s == cfg.SEED for i, r, s in simulated_scenarios())
 
 
 def comparison_bs_scen(ident, baseline_id, n_round, window=None):

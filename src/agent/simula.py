@@ -243,6 +243,15 @@ def confronta(db, dati, scenario, avvisi):
         }
         for k, c in nomi.items()
     }
+    # teletrasporti: pochi eventi, la variazione percentuale inganna (da 1 a 5 = +400%);
+    # meglio la differenza e la quota sui viaggi completati
+    tp = globali["teletrasporti"]
+    tp["variazione_pct"] = None
+    tp["differenza"] = tp["dopo"] - tp["prima"]
+    tp["quota_pct"] = [
+        round(t / n * 100, 3) if n else None
+        for t, n in ((tp["prima"], g_rif["trips"]), (tp["dopo"], g_scen["trips"]))
+    ]
     return {
         "scenario": scenario,
         "calcolato": datetime.now().isoformat(timespec="seconds"),
@@ -395,9 +404,9 @@ def main():
             print(f"\nRisultati in {CARTELLA_SIM / ev['id'] / 'risultati.json'}")
             for nome, g in ev["globali"].items():
                 pct = (
-                    ""
-                    if g["variazione_pct"] is None
-                    else f"  ({g['variazione_pct']:+.1f}%)"
+                    f"  ({g['variazione_pct']:+.1f}%)"
+                    if g["variazione_pct"] is not None
+                    else f"  ({g['differenza']:+d})" if g.get("differenza") is not None else ""
                 )
                 print(f"   {nome:<22} {g['prima']!s:>8} → {g['dopo']!s:<8}{pct}")
 

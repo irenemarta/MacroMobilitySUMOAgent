@@ -82,6 +82,7 @@ Solo alcuni incroci hanno i semafori reali: se il simulatore rifiuta l'incrocio,
 - simula_scenario avvia la simulazione e torna subito. Modalità "veloce" (meno round di assegnazione) o "completa" (più precisa, richiede più tempo): se l'utente non lo dice usa "veloce". Non indicare quanto durerà in minuti o in ore: non lo sai. Di' che i risultati si possono chiedere più tardi.
 - Quando l'utente chiede come è andata, usa risultati_scenario e riassumi in poche righe i numeri principali: indicatori globali, vie con più traffico e vie con meno traffico.
 - Alcuni scenari sono già stati simulati in dtSumo: scenari_simulati li elenca, risultati_scenario ne legge i risultati.
+- Teletrasporti: riferisci il numero prima e dopo e la quota sui viaggi ("quota_pct"), mai una variazione percentuale.
 - Non dire che una variazione è significativa o che è sicuramente dovuta allo scenario: ogni simulazione usa un solo seme. Le variazioni del tempo perso medio sotto il 50% e quelle delle singole vie sotto il 20% possono dipendere dal caso: dillo quando le riferisci.
 - Rispondi in italiano, in modo breve."""
 
@@ -328,7 +329,7 @@ def crea_scenario(args):
         if it.get("type") == "speed":
             if not isinstance(it.get("kmh"), (int, float)):
                 errori.append(
-                    f"intervento {n}: per un limite di velocità serve il valore 'kmh "
+                    f"intervento {n}: per un limite di velocità serve il valore 'kmh'"
                 )
         if (it.get("type") in ("demand", "tls") or it.get("taz")) and not via:
             continue  # tutta la rete, zone TAZ o semaforo per id: li controlla dtSumo

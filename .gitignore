@@ -14,3 +14,4 @@ notebooks/
 output/
 *.sh
 tests/
+agent/sim_vecchie
