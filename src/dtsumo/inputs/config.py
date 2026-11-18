@@ -2,7 +2,7 @@
 CONFIG.PY
 Path Management for SUMO Traffic Assignment Project
 """
-import os
+import os, sys
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -42,7 +42,11 @@ RAW = DATA_PATH / "raw"
 DERIVED = DATA_PATH / "derived"
 
 # one folder per experiment: DTSUMO_RUN=sumo-1.2x -> output/sumo-1.2x
-RUN = os.getenv("DTSUMO_RUN", "main")
+RUN = os.getenv("DTSUMO_RUN")
+if RUN is None:
+    RUN = "main"
+    print("DTSUMO_RUN not set: outputs in output/main", file=sys.stderr)
+
 OUTPUT_BASE = BASE_PATH / "output" / RUN
 
 OUTPUT_DASHBOARDS = OUTPUT_BASE / "dashboards"
@@ -95,13 +99,9 @@ MAROUTER_WORKDIR = OUTPUT_BASE / "marouter-workdir"
 
 # Generated files
 TAZ = DERIVED / "taz" / "francia_peschiera_TAZ.taz.xml"
-OUTPUT_DIR_PARSING = DERIVED / "parsed"
 EDG_PARSE_XML = OUTPUT_DIR_PARSING / "francia_peschiera.edg.xml"
 NOD_PARSE_XML = OUTPUT_DIR_PARSING / "francia_peschiera.nod.xml"
 TAZREL = {period: DERIVED / "taz" / f"taz-rel/{period}/francia_peschiera.TAZREL.add.xml" for period in PERIODS}
-
-## TLS
-OUTPUT_DIR_TLS = OUTPUT_DIR_ADD / "tls"
 
 ## OD matrices
 OD_MATRICES = {period: OD_DOMANDA / info["mtx"] for period, info in PERIODS.items()}
@@ -117,10 +117,8 @@ OD_ROUTES = {
 }
 
 ## Dashboards
-OUTPUT_DIR_COMPARISON = OUTPUT_DASHBOARDS / "comparison"
 OUTPUT_DIR_DUAITERATE = OUTPUT_DASHBOARDS / "duaiterate"
 OUTPUT_DIR_DUAROUTER  = OUTPUT_DASHBOARDS / "duarouter"
-OUTPUT_DAY_PROFILE = OUTPUT_DASHBOARDS / "out-DataExtr-OD-allDay"
 
 ## Detectors -> DETECTORS['LOGIT']['AM']
 DETECTORS = {
@@ -157,30 +155,6 @@ for period in PERIODS:
         scenario_name = f"MA_{tls}"
         WORKDIRS.setdefault(scenario_name, {})[period] = MAROUTER_WORKDIR / f"{scenario_name}_{period}_seed{SEED}"
 
-## Route paths -> MAP_ROUTES_WORKDIR['LOGIT']['AM']
-MAP_ROUTES_WORKDIR = {}
-
-for method in DUA_METHODS:
-    MAP_ROUTES_WORKDIR[method] = {
-        period: DUA_WORKDIR / f"{method}_{period}" / "od_route_file.odtrips.rou.xml"
-        for period in PERIODS
-    }
-    
-
-for tls in TLS_VARIANTS:
-    scenario_name = f"MA_{tls}"
-    MAP_ROUTES_WORKDIR[scenario_name] = {
-        period: MAROUTER_WORKDIR / f"{scenario_name}_{period}" / "marouter_output.rou.xml"
-        for period in PERIODS
-    }
-
-for tls in TLS_VARIANTS:
-    scenario_name = f"base_{tls}"
-    MAP_ROUTES_WORKDIR[scenario_name] = {
-        period: OUTPUT_BASE / f"routes/OD_{PERIODS[period]['label']}/od_route_file.odtrips.rou.xml"
-        for period in PERIODS
-    }
-
 # Helpers
 def create_project_structure():
     """Create all required output directories."""
@@ -199,7 +173,6 @@ def create_project_structure():
 
         for scenario in SCENARIOS:
             for period in PERIODS:
-                MAP_ROUTES_WORKDIR[scenario][period].parent.mkdir(parents=True, exist_ok=True)
                 DET_OUT[scenario][period].mkdir(parents=True, exist_ok=True)
                 WORKDIRS.get(scenario, {}).get(period, Path(".")).mkdir(parents=True, exist_ok=True)
                 SIM_OUT[scenario][period].mkdir(parents=True, exist_ok=True)

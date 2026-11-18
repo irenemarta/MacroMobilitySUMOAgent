@@ -12,6 +12,5 @@ src/dtsumo/operations/connections.py
 TXT
 notebooks/
 output/
-*.sh
 tests/
-agent/sim_vecchie
+src/agent/sim*
