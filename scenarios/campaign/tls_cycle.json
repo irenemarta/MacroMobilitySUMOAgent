@@ -1,0 +1,12 @@
+{
+ "id": "tls_cycle",
+ "interventions": [
+  {
+   "type": "tls",
+   "via": "Corso Francia",
+   "at": "Corso Peschiera",
+   "action": "cycle",
+   "factor": 1.3
+  }
+ ]
+}

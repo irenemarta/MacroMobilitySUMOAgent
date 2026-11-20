@@ -1,0 +1,12 @@
+{
+ "id": "tls_green",
+ "interventions": [
+  {
+   "type": "tls",
+   "via": "Corso Francia",
+   "at": "Corso Peschiera",
+   "action": "green",
+   "seconds": 15
+  }
+ ]
+}

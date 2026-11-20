@@ -1,0 +1,10 @@
+{
+ "id": "speed30",
+ "interventions": [
+  {
+   "type": "speed",
+   "via": "Corso Filippo Brunelleschi",
+   "ms": 8.33
+  }
+ ]
+}

@@ -3,7 +3,8 @@
 .vscode
 *.log
 logs
-scenarios
+scenarios/*
+!scenarios/campaign/
 data
 scripts/output
 scripts/

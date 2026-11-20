@@ -1,0 +1,10 @@
+{
+ "id": "francia_montecucco_chiuso",
+ "interventions": [
+  {
+   "type": "junction",
+   "via": "Corso Francia",
+   "at": "Corso Monte Cucco"
+  }
+ ]
+}

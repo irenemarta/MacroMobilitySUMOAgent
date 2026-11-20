@@ -1,0 +1,17 @@
+{
+ "id": "taz604_up",
+ "interventions": [
+  {
+   "type": "demand",
+   "taz": [
+    "604"
+   ],
+   "factor": 1.3,
+   "direction": "both",
+   "time": [
+    "07:00",
+    "09:00"
+   ]
+  }
+ ]
+}

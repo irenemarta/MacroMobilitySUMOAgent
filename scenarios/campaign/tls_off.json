@@ -1,0 +1,11 @@
+{
+ "id": "tls_off",
+ "interventions": [
+  {
+   "type": "tls",
+   "via": "Corso Francia",
+   "at": "Corso Peschiera",
+   "action": "off"
+  }
+ ]
+}
