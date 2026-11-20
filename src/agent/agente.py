@@ -64,7 +64,7 @@ Regole:
     Esempi: metà carreggiata -> 0.5; chiusa una corsia su tre -> 0.67. Se l'utente non dice quanto, chiedilo.
 - Cantiere lungo una parte della via: "from" (trasversale da cui parte), "fraction" (quota della lunghezza della via, es. 0.1 per il 10%) e, se l'utente indica la direzione, "to". Non usare "between" insieme a "fraction".
 - Più o meno traffico: type "demand" con "factor" (1.3 = +30%, 0.8 = -20%). Senza "via" vale per tutta la rete; con "via" per le zone attraversate da quella via.
-"time": ["HH:MM", "HH:MM"] per una fascia oraria. "direction": "to" per chi arriva nella zona (es. una manifestazione o un evento), "from" per chi parte, altrimenti "both".
+"time": ["HH:MM", "HH:MM"] per una fascia oraria. "direction": "to" per chi arriva nella zona (es. "arrivi", una manifestazione o un evento), "from" per chi parte ("partenze"), "both" solo se l'utente non distingue.
 Una manifestazione alle 18 si può rendere con più arrivi prima ("to", es. 16:30-18:00) e più partenze dopo ("from", es. 20:00-21:30).
 - Zone: se l'utente indica una zona con il suo numero (TAZ), usa "taz": ["604"] al posto di "via". "Chiudere una zona" può voler dire chiuderne le strade (closure con "taz") o togliere i viaggi che partono o arrivano lì (demand con "taz" e "factor": 0): chiedi quale intende.
 - Limite di velocità: type "speed" con "kmh" in km/h (es. 30 per una zona 30), su una via o su un tratto "between".
@@ -329,8 +329,12 @@ def crea_scenario(args):
         if it.get("type") == "speed":
             if not isinstance(it.get("kmh"), (int, float)):
                 errori.append(
-                    f"intervento {n}: per un limite di velocità serve il valore 'kmh'"
+                    f"intervento {n}: per un limite di velocità aggiungi 'kmh' con il numero in km/h, per esempio \"kmh\": 30"
                 )
+        if it.get("time") and it.get("type") != "demand":
+            errori.append(
+                f"intervento {n}: togli 'time', vale solo per 'demand'; questo intervento dura tutta la giornata"
+            )
         if (it.get("type") in ("demand", "tls") or it.get("taz")) and not via:
             continue  # tutta la rete, zone TAZ o semaforo per id: li controlla dtSumo
         if via not in vie:
@@ -440,7 +444,7 @@ def crea_scenario(args):
 
 
 
-# --- Conversioni --------------------------------------------------------------
+# Conversioni
 def ora(secondi):
     return f"{secondi // 3600:02d}:{secondi % 3600 // 60:02d}"
 
@@ -615,7 +619,15 @@ def evidenzia(nome, args, risultato):
     return {"archi": archi, "nodi": nodi}
 
 
-# --- Ciclo di conversazione ------------------------------------------------
+def nomi_scenario(args):
+    """Street names used by the interventions of a crea_scenario call."""
+    nomi = set()
+    for it in args.get("interventions") or []:
+        nomi.update(it.get(k) for k in ("via", "at", "from", "to") if isinstance(it.get(k), str))
+        nomi.update(t for t in it.get("between") or [] if isinstance(t, str))
+    return nomi
+
+
 def esegui_turno(messaggi, max_passi=8):
     """Esegue un turno sull'ultima richiesta in messaggi ed emette gli eventi man mano che accadono:
     dizionari con "tipo" (inizio_turno, chiamata_modello, testo_modello, chiamata_tool, risultato_tool,
@@ -632,6 +644,7 @@ def esegui_turno(messaggi, max_passi=8):
         "(troppi passaggi senza una risposta: riformula la richiesta)",
         None,
     )
+    rifiutate, suggerite, create = set(), set(), set()
     try:
         for _ in range(max_passi):
             t0 = time.monotonic()
@@ -665,10 +678,32 @@ def esegui_turno(messaggi, max_passi=8):
                     argomenti=call.function.arguments if args is None else args,
                 )
                 t0 = time.monotonic()
-                if isinstance(args, dict):
-                    risultato = esegui(nome, args)
-                else:
+                chiave = nome + json.dumps(args, sort_keys=True, ensure_ascii=False)
+                if not isinstance(args, dict):
                     args, risultato = {}, {"errore": "argomenti non in JSON valido"}
+                elif chiave in rifiutate:
+                    risultato = {"ok": False, "errori": [
+                        "questa chiamata è già stata rifiutata: correggi gli argomenti indicati negli errori o chiedi all'utente"]}
+                elif nome == "crea_scenario" and nomi_scenario(args) & suggerite:
+                    risultato = {"ok": False, "errori": [
+                        f"'{v}' è solo un suggerimento di cerca_via: chiedi all'utente se intende questa via"
+                        for v in sorted(nomi_scenario(args) & suggerite)]}
+                elif nome == "simula_scenario" and args.get("id") in create:
+                    risultato = {"ok": False, "errore":
+                        "lo scenario è appena stato creato: riassumilo e chiedi all'utente se simularlo"}
+                else:
+                    risultato = esegui(nome, args)
+                # rules of the turn: no repeated rejected calls, no unconfirmed suggestions,
+                # no simulation before the user has seen the scenario
+                if risultato.get("ok") is False:
+                    rifiutate.add(chiave)
+                if nome == "cerca_via":
+                    if risultato.get("esatte"):
+                        suggerite.difference_update(risultato["esatte"])
+                    else:
+                        suggerite.update(risultato.get("suggerimenti", []))
+                if nome == "crea_scenario" and risultato.get("ok"):
+                    create.add(risultato["id"])
                 durata = round(time.monotonic() - t0, 3)
                 messaggi.append(
                     {

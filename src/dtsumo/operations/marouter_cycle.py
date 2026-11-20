@@ -23,7 +23,7 @@ TIME_TO_TELEPORT = 150  # s, every sumo run of the pipeline (rounds and final): 
 
 TLS_PENALTY_BY_VARIANT = {
     "no_TLS": 0.0,
-    "with_TLS": 15.0,
+    "with_TLS": 5.0,
 }
 
 SUE_PARAMS = dict(
