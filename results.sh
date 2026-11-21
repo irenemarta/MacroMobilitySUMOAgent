@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Figures and numbers of the thesis chapter "Experimental evidences and outcomes", all from one campaign.
+# Figures and numbers of the thesis (demand profile of Chapter 4, Chapter 5 outcomes), all from one campaign.
 #   bash results.sh                                # defaults below
 #   RUN=sumo-1.28-final SEED=36 bash results.sh     # same analyses on the classic meso campaign
 # Every step writes its printed numbers to $OUT/<step>.txt; a failed step is reported and the others go on.
@@ -12,7 +12,7 @@ SCENARIO_SEEDS=${SCENARIO_SEEDS:-$SEEDS}
 SCENARIOS=${SCENARIOS:-"francia_montecucco_chiuso speed30 taz604_down taz604_up tls_cycle tls_green tls_off"}
 COMPARE_RUNS=${COMPARE_RUNS:-"sumo-1.26-confronto sumo-1.28-final"}   # other models shown next to RUN
 # time windows of the scenarios that act on a part of the day ("scenario HH:MM HH:MM", on :00 or :30)
-WINDOWS=${WINDOWS:-"tls_cycle 07:00 10:00,tls_cycle 17:00 20:00,tls_green 07:00 10:00,tls_green 17:00 20:00,tls_off 07:00 10:00,tls_off 17:00 20:00"}
+WINDOWS=${WINDOWS:-"francia_montecucco_chiuso 07:00 10:00,francia_montecucco_chiuso 17:00 20:00,taz604_up 07:00 09:00,taz604_down 07:00 09:00,tls_cycle 07:00 10:00,tls_cycle 17:00 20:00,tls_green 07:00 10:00,tls_green 17:00 20:00,tls_off 07:00 10:00,tls_off 17:00 20:00"}
 VARIANT=MA_with_TLS
 
 export DTSUMO_RUN=$RUN
@@ -33,6 +33,9 @@ step() {  # name command...
 }
 
 B=$(sim_out baseline "$SEED")
+
+# 0. hourly profile of the daily demand (PASTA sensors, same data as the pipeline): Figure 4.7
+step profile $PY dtsumo.inputs.dayODs --out "$OUT/profile/flows_perc.png"
 
 # 1. dashboard of the reference run, and TLS on (baseline) vs off
 step dashboard $PY dtsumo.analysis.sumoResults "$B/Summary_marouter_seed$SEED.xml" \
@@ -55,14 +58,14 @@ step trips $PY dtsumo.analysis.trip_level_output \
     --tripinfo "$B/TripInfo_marouter_seed$SEED.xml" --vehroutes "$B/VehTraces_marouter_seed$SEED.xml" \
     --out-dir "$OUT/trips"
 
-# 3. heatmaps at the peaks, TLS on vs off (speed and flow)
-for sid in baseline tls_off; do
-    for peak in "08:00 09:00 AM" "18:00 19:00 PM"; do
-        set -- $peak
-        for metric in speed flow; do
-            step "heatmap_${sid}_${3}_$metric" $PY dtsumo.analysis.maps --det-out "$(det_out $sid "$SEED")" \
-                --metric $metric --from $1 --to $2 --title "$sid $3 seed $SEED" --out-dir "$OUT/maps"
-        done
+# 3. heatmaps at the peaks, TLS on vs off (speed and flow), on the same scale
+for peak in "08:00 09:00 AM" "18:00 19:00 PM"; do
+    set -- $peak
+    for metric in speed flow; do
+        step "heatmap_${3}_$metric" $PY dtsumo.analysis.maps detector-heatmap \
+            --det-out "$(det_out baseline "$SEED")" --label baseline \
+            --det-out "$(det_out tls_off "$SEED")" --label tls_off \
+            --metric $metric --from $1 --to $2 --title "$3 seed $SEED" --out-dir "$OUT/maps"
     done
 done
 
@@ -100,6 +103,7 @@ step variability $PY dtsumo.analysis.seed_bootstrap get-variability $runs
 for sc in $SCENARIOS; do
     runs=""; for s in $SCENARIO_SEEDS; do runs="$runs $sc:$s:baseline"; done
     step "effect_$sc" $PY dtsumo.analysis.seed_bootstrap effect --csv "$OUT/effect_$sc.csv" $runs
+    step "map_effect_$sc" $PY dtsumo.analysis.maps effect-map --csv "$OUT/effect_$sc.csv" --title "$sc" --out-dir "$OUT/maps"
 done
 
 # 6. effect of the scenarios inside their own time window (paired by seed)
@@ -108,6 +112,8 @@ for job in "${jobs[@]}"; do
     set -- $job
     step "window_${1}_${2/:/}_${3/:/}" $PY dtsumo.analysis.compare "$1" --baseline baseline \
         --seeds "$SCENARIO_SEEDS" --from "$2" --to "$3" --csv "$OUT/window_${1}_${2/:/}_${3/:/}.csv"
+    step "map_window_${1}_${2/:/}_${3/:/}" $PY dtsumo.analysis.maps effect-map \
+        --csv "$OUT/window_${1}_${2/:/}_${3/:/}.csv" --title "${1} ${2}-${3}" --out-dir "$OUT/maps"
 done
 
 echo "done: $OUT"

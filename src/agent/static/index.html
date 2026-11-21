@@ -87,7 +87,7 @@
 
       #app {
         display: grid;
-        grid-template-columns: 60% 40%;
+        grid-template-columns: var(--larghezza-mappa, 60%) 6px minmax(0, 1fr);
         height: 100vh;
       }
 
@@ -546,10 +546,23 @@
       /* --- colonna destra: chat e traccia --- */
       #col-destra {
         display: grid;
-        grid-template-rows: minmax(0, 11fr) minmax(0, 9fr);
+        grid-template-rows: var(--altezza-chat, 55%) 6px minmax(0, 1fr);
         min-width: 0;
         min-height: 0;
-        border-left: 1px solid var(--bordo);
+      }
+      /* bars to drag: map | right column, chat / trace */
+      .divisore {
+        background: var(--bordo);
+        touch-action: none;
+      }
+      .divisore:hover {
+        background: var(--tenue);
+      }
+      .divisore.verticale {
+        cursor: col-resize;
+      }
+      .divisore.orizzontale {
+        cursor: row-resize;
       }
       .sezione {
         display: flex;
@@ -832,7 +845,9 @@
         }
         #col-destra {
           grid-template-rows: 60vh 50vh;
-          border-left: none;
+        }
+        .divisore {
+          display: none;
         }
         #pannello {
           width: 300px;
@@ -909,6 +924,7 @@
         </div>
       </section>
 
+      <div class="divisore verticale" id="divisore-colonne"></div>
       <section id="col-destra">
         <section id="chat" class="sezione">
           <header class="intest">
@@ -928,6 +944,7 @@
             <button id="invia" class="primario">Invia</button>
           </form>
         </section>
+        <div class="divisore orizzontale" id="divisore-righe"></div>
         <section id="traccia" class="sezione">
           <header class="intest">
             <h2>Traccia dell'agente</h2>
@@ -1070,12 +1087,36 @@
       // aspetto di ogni tipo di intervento sulla mappa e nella legenda
       const STILE_INTERVENTO = {
         closure: { c: COLORI.chiusura, tratteggio: "7 5", nome: "chiusura" },
-        partial_closure: { c: COLORI.cantiere, tratteggio: "3 4", nome: "cantiere", etichetta: true },
-        speed: { c: COLORI.velocita, nome: "cambio di velocità", etichetta: true },
+        partial_closure: {
+          c: COLORI.cantiere,
+          tratteggio: "3 4",
+          nome: "cantiere",
+          etichetta: true,
+        },
+        speed: {
+          c: COLORI.velocita,
+          nome: "cambio di velocità",
+          etichetta: true,
+        },
         // semafori e incroci: solo il punto sul nodo, gli archi restano liberi per i risultati
-        tls: { c: COLORI.semaforo, nome: "semaforo", etichetta: true, soloNodi: true },
-        junction: { c: COLORI.chiusura, nome: "incrocio o svolta", etichetta: true, soloNodi: true },
-        demand: { c: COLORI.domanda, nome: "domanda (zone)", etichetta: true, sottile: true },
+        tls: {
+          c: COLORI.semaforo,
+          nome: "semaforo",
+          etichetta: true,
+          soloNodi: true,
+        },
+        junction: {
+          c: COLORI.chiusura,
+          nome: "incrocio o svolta",
+          etichetta: true,
+          soloNodi: true,
+        },
+        demand: {
+          c: COLORI.domanda,
+          nome: "domanda (zone)",
+          etichetta: true,
+          sottile: true,
+        },
       };
       const stile = (tipo) => STILE_INTERVENTO[tipo] || STILE_INTERVENTO.speed;
       const SCALA_VEL = [
@@ -1127,6 +1168,41 @@
       }).addTo(mappa);
       const tela = L.canvas({ tolerance: 5 });
       new ResizeObserver(() => mappa.invalidateSize()).observe($("#mappa")); // la legenda può andare a capo
+
+      // dragging a bar sets the share of the map (columns) or of the chat (rows), between 15% and 85%
+      function trascinabile(barra, contenitore, variabile, verticale) {
+        barra.addEventListener("pointerdown", (e) => {
+          barra.setPointerCapture(e.pointerId);
+          const muovi = (ev) => {
+            const r = contenitore.getBoundingClientRect();
+            const quota = verticale
+              ? (ev.clientX - r.left) / r.width
+              : (ev.clientY - r.top) / r.height;
+            contenitore.style.setProperty(
+              variabile,
+              `${Math.min(85, Math.max(15, quota * 100))}%`,
+            );
+          };
+          barra.addEventListener("pointermove", muovi);
+          barra.addEventListener(
+            "pointerup",
+            () => barra.removeEventListener("pointermove", muovi),
+            { once: true },
+          );
+        });
+      }
+      trascinabile(
+        $("#divisore-colonne"),
+        $("#app"),
+        "--larghezza-mappa",
+        true,
+      );
+      trascinabile(
+        $("#divisore-righe"),
+        $("#col-destra"),
+        "--altezza-chat",
+        false,
+      );
       // ordine di disegno: aloni (selezione, vie cercate) sotto la rete; sovrapposizione e incroci sopra
       const livelli = {};
       for (const nome of [
@@ -1375,9 +1451,21 @@
         voci.push(
           simbolo("alone", COLORI.evidenza, "via cercata"),
           simbolo("punto", COLORI.incrocio, "incrocio"),
-          ...[...new Set((stato.dettaglio ? stato.dettaglio.sovrapposizione : []).map((el) => el.tipo))]
-          .map((tipo) => stile(tipo))
-          .map((st) => simbolo(st.soloNodi ? "punto" : st.tratteggio ? "tratteggio" : "", st.c, st.nome)),
+          ...[
+            ...new Set(
+              (stato.dettaglio ? stato.dettaglio.sovrapposizione : []).map(
+                (el) => el.tipo,
+              ),
+            ),
+          ]
+            .map((tipo) => stile(tipo))
+            .map((st) =>
+              simbolo(
+                st.soloNodi ? "punto" : st.tratteggio ? "tratteggio" : "",
+                st.c,
+                st.nome,
+              ),
+            ),
         );
         $("#legenda").innerHTML = voci.join("");
       }
@@ -1565,7 +1653,9 @@
             livelli.scenario.addLayer(linea);
           }
           // semafori e incroci: un punto su ogni nodo, e l'etichetta sul primo
-          const nodi = (el.nodi || []).map((n) => stato.nodi[n]).filter(Boolean);
+          const nodi = (el.nodi || [])
+            .map((n) => stato.nodi[n])
+            .filter(Boolean);
           for (const c of nodi)
             livelli.scenario.addLayer(
               L.circleMarker([c[1], c[0]], {
@@ -1656,9 +1746,10 @@
               : el.at
                 ? ` × ${esc(el.at)}`
                 : "";
-            const quanti = el.nodi && el.nodi.length
-              ? `${el.nodi.length} ${el.nodi.length === 1 ? "nodo" : "nodi"}`
-              : `${el.archi.length} archi`;
+            const quanti =
+              el.nodi && el.nodi.length
+                ? `${el.nodi.length} ${el.nodi.length === 1 ? "nodo" : "nodi"}`
+                : `${el.archi.length} archi`;
             return (
               `<li><i class="segno ${st.tratteggio ? "tratteggio" : ""}" style="--c:${st.c}"></i>` +
               `<span><b>${esc(el.via)}</b>${tratto}<br><span class="tenue">${esc(el.etichetta)} · ${quanti}</span></span></li>`
